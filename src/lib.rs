@@ -15,9 +15,8 @@ use ethers::{
 use eyre::Result;
 
 pub const INITAL_STATE_PATH: &str = "InitialState.csv";
-pub const HTTP_URL: &str = "https://eth.llamarpc.com";
 pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
-pub const GENESIS_BLOCK: u64 = 16627460;
+pub const GENESIS_BLOCK: u64 = 16_627_460;
 pub const BLOCK_STEP: u64 = 128;
 
 #[derive(Error, Debug)]
@@ -40,9 +39,9 @@ pub fn create_initial_state() {
     todo!();
 }
 
-pub async fn init_eth_adapter() -> (Provider<Http>, Contract) {
+pub async fn init_eth_adapter(http_url: &str) -> (Provider<Http>, Contract) {
     let provider =
-        Provider::<Http>::try_from(HTTP_URL).expect("could not instantiate HTTP Provider");
+        Provider::<Http>::try_from(http_url).expect("could not instantiate HTTP Provider");
 
     let abi_file = std::fs::File::open("./IZkSync.json").unwrap();
     let contract = Contract::load(abi_file).unwrap();
@@ -53,7 +52,7 @@ pub async fn init_eth_adapter() -> (Provider<Http>, Contract) {
 fn parse_calldata(
     l2_block_number: U256,
     commit_blocks_fn: &Function,
-    calldata: Vec<u8>,
+    calldata: &[u8],
 ) -> Result<Vec<CommitBlockInfoV1>> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
@@ -113,7 +112,7 @@ fn parse_commit_block_info(
         .into());
     };
 
-    for data in data.into_iter() {
+    for data in data.iter() {
         let abi::Token::Tuple(block_elems) = data else {
             return Err(ParseError::InvalidCommitBlockInfo("struct elements".to_string()).into());
         };
@@ -261,7 +260,6 @@ fn parse_commit_block_info(
                 repeated_calldata[6],
                 repeated_calldata[7],
             ]);
-            let index = index as u64;
             let mut t = repeated_calldata[8..].array_chunks::<32>();
             let value = *t.next().ok_or_else(|| {
                 ParseError::InvalidCommitBlockInfo("repeatedStorageChanges".to_string())
@@ -290,7 +288,6 @@ fn parse_commit_block_info(
 }
 
 fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
-    let mut data = data;
     /*
     let num_entries = u32::from_be_bytes([data[3], data[2], data[1], data[0]]);
 
@@ -299,10 +296,11 @@ fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
 
     let dict_len = u16::from_be_bytes([data[offset + 1], data[offset]]);
 
-    offset = offset + 2;
+    offset += 2;
 
-    let dict = data[offset..2 + (dict_len as usize)].to_vec();
-    offset = offset + (2 + (dict_len as usize));
+    let end = 2 + dict_len as usize;
+    let dict = data[offset..end].to_vec();
+    offset += end;
     let encoded_data = data[offset..].to_vec();
 
     // Each dictionary element should be 8 bytes. Verify alignment.
