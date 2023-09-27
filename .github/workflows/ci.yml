@@ -1,0 +1,28 @@
+name: basics
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [
+          cargo fmt --all --check,
+          cargo check --all-targets --all-features,
+          cargo clippy --all-targets --all-features,
+          cargo test
+        ]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - name: ${{ matrix.checks }}
+        run: ${{ matrix.checks }}
