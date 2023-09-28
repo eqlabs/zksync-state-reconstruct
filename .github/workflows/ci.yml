@@ -26,5 +26,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install nightly Rust
         run: rustup default nightly
+      - name: Install additional components
+        run: |
+          rustup component add rustfmt
+          rustup component add clippy
       - name: ${{ matrix.checks }}
         run: cargo ${{ matrix.checks }}
