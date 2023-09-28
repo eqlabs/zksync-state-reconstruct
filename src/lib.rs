@@ -49,11 +49,7 @@ pub async fn init_eth_adapter(http_url: &str) -> (Provider<Http>, Contract) {
     (provider, contract)
 }
 
-fn parse_calldata(
-    l2_block_number: U256,
-    commit_blocks_fn: &Function,
-    calldata: &[u8],
-) -> Result<Vec<CommitBlockInfoV1>> {
+fn parse_calldata(commit_blocks_fn: &Function, calldata: &[u8]) -> Result<Vec<CommitBlockInfoV1>> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
         .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
@@ -95,15 +91,11 @@ fn parse_calldata(
     // TODO: What to do here?
     // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
 
-    parse_commit_block_info(l2_block_number, &new_blocks_data)
+    parse_commit_block_info(&new_blocks_data)
 }
 
-fn parse_commit_block_info(
-    l2_block_number: U256,
-    data: &abi::Token,
-) -> Result<Vec<CommitBlockInfoV1>> {
+fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> {
     let mut res = vec![];
-    let mut latest_l2_block_number = l2_block_number;
 
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
@@ -280,7 +272,6 @@ fn parse_commit_block_info(
         //                     - factoryDeps -> compressed bytecode
         // --------------------------------------------------------------
 
-        latest_l2_block_number = new_l2_block_number;
         res.push(blk);
     }
 
@@ -356,7 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_works() -> Result<()> {
-        let (provider, contract) = init_eth_adapter().await;
+        let (provider, contract) = init_eth_adapter("https://eth.llamarpc.com").await;
         let latest_block = provider
             .get_block(BlockNumber::Latest)
             .await?
@@ -397,8 +388,8 @@ mod tests {
 
                 if let Some(tx_hash) = log.transaction_hash {
                     let tx = provider.get_transaction(tx_hash).await?;
-                    let calldata = tx.unwrap().input.to_vec();
-                    let blocks = parse_calldata(new_l2_block_number, &function, calldata)?;
+                    let calldata = tx.unwrap().input;
+                    let blocks = parse_calldata(&function, &calldata)?;
 
                     // TODO: Apply transaction to L2.
                     latest_l2_block_number = new_l2_block_number;
