@@ -345,6 +345,7 @@ mod tests {
 
     use super::*;
 
+    #[ignore]
     #[tokio::test]
     async fn it_works() -> Result<()> {
         let (provider, contract) = init_eth_adapter("https://eth.llamarpc.com").await;
