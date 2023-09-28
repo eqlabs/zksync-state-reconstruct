@@ -10,19 +10,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  core:
+  cargo:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         checks: [
-          cargo fmt --all --check,
-          cargo check --all-targets --all-features,
-          cargo clippy --all-targets --all-features,
-          cargo test
+          fmt --all --check,
+          check --all-targets --all-features,
+          clippy --all-targets --all-features,
+          test
         ]
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      - name: Install nightly Rust
+        run: rustup default nightly
       - name: ${{ matrix.checks }}
-        run: ${{ matrix.checks }}
+        run: cargo ${{ matrix.checks }}
