@@ -15,13 +15,13 @@ fn cli() -> Command {
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
                                 .help("Ethereum block number to start state import from")
-                                .default_value("16627460")
+                                .default_value(state_reconstruct::GENESIS_BLOCK.to_string())
                                 .value_parser(value_parser!(u64)),
                         )
                         .arg(
                             arg!(--"block-step" <BLOCK_STEP>)
                                 .help("Number of blocks to filter & process in one step")
-                                .default_value("128")
+                                .default_value(state_reconstruct::BLOCK_STEP.to_string())
                                 .value_parser(value_parser!(u64)),
                         ),
                 )
