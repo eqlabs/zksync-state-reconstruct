@@ -71,54 +71,59 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
         */
 
         let abi::Token::Uint(timestamp) = block_elems[1].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()));
         };
 
         let abi::Token::Uint(new_enumeration_index) = block_elems[2].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "indexRepeatedStorageChanges".to_string(),
-            )
-            .into());
+            ));
         };
         let new_enumeration_index = new_enumeration_index.0[0];
 
         let abi::Token::FixedBytes(state_root) = block_elems[3].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("newStateRoot".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "newStateRoot".to_string(),
+            ));
         };
 
         let abi::Token::Uint(number_of_l1_txs) = block_elems[4].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("numberOfLayer1Txs".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "numberOfLayer1Txs".to_string(),
+            ));
         };
 
         let abi::Token::FixedBytes(l2_logs_tree_root) = block_elems[5].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("l2LogsTreeRoot".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "l2LogsTreeRoot".to_string(),
+            ));
         };
 
         let abi::Token::FixedBytes(priority_operations_hash) = block_elems[6].clone() else {
-            return Err(
-                ParseError::InvalidCommitBlockInfo("priorityOperationsHash".to_string()).into(),
-            );
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "priorityOperationsHash".to_string(),
+            ));
         };
 
         let abi::Token::Bytes(initial_changes_calldata) = block_elems[7].clone() else {
-            return Err(
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string()).into(),
-            );
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "initialStorageChanges".to_string(),
+            ));
         };
 
         if initial_changes_calldata.len() % 64 != 4 {
-            return Err(
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string()).into(),
-            );
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "initialStorageChanges".to_string(),
+            ));
         }
         let abi::Token::Bytes(repeated_changes_calldata) = block_elems[8].clone() else {
-            return Err(
-                ParseError::InvalidCommitBlockInfo("repeatedStorageChanges".to_string()).into(),
-            );
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "repeatedStorageChanges".to_string(),
+            ));
         };
 
         let abi::Token::Bytes(l2_logs) = block_elems[9].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("l2Logs".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo("l2Logs".to_string()));
         };
 
         // TODO(tuommaki): Are these useful at all?
@@ -127,19 +132,23 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "l2ArbitraryLengthMessages".to_string(),
             )
-            .into());
+            );
         };
         */
 
         // TODO(tuommaki): Parse factory deps
         let abi::Token::Array(factory_deps) = block_elems[11].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("factoryDeps".to_string()).into());
+            return Err(ParseError::InvalidCommitBlockInfo(
+                "factoryDeps".to_string(),
+            ));
         };
 
         let mut smartcontracts = vec![];
         for bytecode in factory_deps.into_iter() {
             let abi::Token::Bytes(bytecode) = bytecode else {
-                return Err(ParseError::InvalidCommitBlockInfo("factoryDeps".to_string()).into());
+                return Err(ParseError::InvalidCommitBlockInfo(
+                    "factoryDeps".to_string(),
+                ));
             };
 
             match decompress_bytecode(bytecode) {
@@ -185,8 +194,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             if t.next().is_some() {
                 return Err(ParseError::InvalidCommitBlockInfo(
                     "initialStorageChanges".to_string(),
-                )
-                .into());
+                ));
             }
 
             let _ = blk.initial_storage_changes.insert(key, value);
@@ -211,8 +219,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             if t.next().is_some() {
                 return Err(ParseError::InvalidCommitBlockInfo(
                     "repeatedStorageChanges".to_string(),
-                )
-                .into());
+                ));
             }
 
             blk.repeated_storage_changes.insert(index, value);
