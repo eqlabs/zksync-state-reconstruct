@@ -1,9 +1,10 @@
 use ethers::{abi, types::U256};
 use eyre::Result;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::vec::Vec;
 use thiserror::Error;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Error, Debug)]
 pub enum ParseError {
     #[error("invalid Calldata: {0}")]
@@ -36,9 +37,9 @@ pub struct CommitBlockInfoV1 {
     /// Hash of all priority operations from this block.
     pub priority_operations_hash: Vec<u8>,
     /// Storage write access as a concatenation key-value.
-    pub initial_storage_changes: HashMap<[u8; 32], [u8; 32]>,
+    pub initial_storage_changes: IndexMap<[u8; 32], [u8; 32]>,
     /// Storage write access as a concatenation index-value.
-    pub repeated_storage_changes: HashMap<u64, [u8; 32]>,
+    pub repeated_storage_changes: IndexMap<u64, [u8; 32]>,
     /// Concatenation of all L2 -> L1 logs in the block.
     pub l2_logs: Vec<u8>,
     /// (contract bytecodes) array of L2 bytecodes that were deployed.
@@ -176,8 +177,8 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             number_of_l1_txs,
             l2_logs_tree_root,
             priority_operations_hash,
-            initial_storage_changes: HashMap::default(),
-            repeated_storage_changes: HashMap::default(),
+            initial_storage_changes: IndexMap::default(),
+            repeated_storage_changes: IndexMap::default(),
             l2_logs: l2_logs.to_vec(),
             factory_deps: smartcontracts,
         };
@@ -295,21 +296,21 @@ pub enum L2ToL1Pubdata {
 /// Data needed to commit new block
 pub struct CommitBlockInfoV2 {
     /// L2 block number.
-    block_number: u64,
+    pub block_number: u64,
     /// Unix timestamp denoting the start of the block execution.
-    timestamp: u64,
+    pub timestamp: u64,
     /// The serial number of the shortcut index that's used as a unique identifier for storage keys that were used twice or more.
-    index_repeated_storage_changes: u64,
+    pub index_repeated_storage_changes: u64,
     /// The state root of the full state tree.
-    new_state_root: Vec<u8>,
+    pub new_state_root: Vec<u8>,
     /// Number of priority operations to be processed.
-    number_of_l1_txs: U256,
+    pub number_of_l1_txs: U256,
     /// Hash of all priority operations from this block.
-    priority_operations_hash: Vec<u8>,
+    pub priority_operations_hash: Vec<u8>,
     /// Concatenation of all L2 -> L1 system logs in the block.
-    system_logs: Vec<u8>,
+    pub system_logs: Vec<u8>,
     /// Total pubdata committed to as part of bootloader run. Contents are: l2Tol1Logs <> l2Tol1Messages <> publishedBytecodes <> stateDiffs.
-    total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
+    pub total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
 }
 
 impl CommitBlockInfoV1 {
