@@ -1,14 +1,14 @@
 #![feature(array_chunks)]
-
-use std::fs;
+// #![warn(clippy::pedantic)]
 
 mod state;
+mod tree;
 use crate::state::CommitBlockInfoV1;
 
 use ethers::{
     abi::{Contract, Function},
     prelude::*,
-    providers::{Http, Provider},
+    providers::Provider,
 };
 use eyre::Result;
 
@@ -16,11 +16,6 @@ pub const INITAL_STATE_PATH: &str = "InitialState.csv";
 pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
 pub const GENESIS_BLOCK: u64 = 16_627_460;
 pub const BLOCK_STEP: u64 = 128;
-
-pub fn create_initial_state() {
-    let _input = fs::read_to_string(INITAL_STATE_PATH).unwrap();
-    todo!();
-}
 
 pub async fn init_eth_adapter(http_url: &str) -> (Provider<Http>, Contract) {
     let provider =
@@ -32,7 +27,10 @@ pub async fn init_eth_adapter(http_url: &str) -> (Provider<Http>, Contract) {
     (provider, contract)
 }
 
-fn parse_calldata(commit_blocks_fn: &Function, calldata: &[u8]) -> Result<Vec<CommitBlockInfoV1>> {
+pub fn parse_calldata(
+    commit_blocks_fn: &Function,
+    calldata: &[u8],
+) -> Result<Vec<CommitBlockInfoV1>> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
         .map_err(|e| state::ParseError::InvalidCalldata(e.to_string()))?;
@@ -58,7 +56,7 @@ fn parse_calldata(commit_blocks_fn: &Function, calldata: &[u8]) -> Result<Vec<Co
         );
     };
 
-    let abi::Token::Uint(previous_l2_block_number) = stored_block_info[0].clone() else {
+    let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
         return Err(state::ParseError::InvalidStoredBlockInfo(
             "cannot parse previous L2 block number".to_string(),
         )
@@ -101,6 +99,8 @@ fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> 
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
     use ethers::{
         providers::Middleware,
         types::{Address, BlockNumber, Filter},
@@ -108,13 +108,23 @@ mod tests {
 
     use eyre::Result;
 
+    use crate::tree::TreeWrapper;
+
     use super::*;
 
     #[ignore]
     #[tokio::test]
     async fn it_works() -> Result<()> {
+        // TODO: This should be an env variable / CLI argument.
+        let db_dir = env::current_dir()?.join("db");
+        // TODO: Save / Load from existing db.
+        if db_dir.exists() {
+            std::fs::remove_dir_all(&db_dir)?;
+        }
+        let mut tree = TreeWrapper::new(db_dir.as_path())?;
+
         let (provider, contract) = init_eth_adapter("https://eth.llamarpc.com").await;
-        let latest_block = provider
+        let latest_l1_block = provider
             .get_block(BlockNumber::Latest)
             .await?
             .unwrap()
@@ -126,7 +136,7 @@ mod tests {
 
         let mut current_block = GENESIS_BLOCK;
         let mut latest_l2_block_number = U256::default();
-        while current_block <= latest_block.0[0] {
+        while current_block <= latest_l1_block.0[0] {
             // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
             // TODO: Filter by executed blocks too.
             let filter = Filter::new()
@@ -137,8 +147,6 @@ mod tests {
 
             // Grab all relevant logs.
             let logs = provider.get_logs(&filter).await?;
-
-            println!("{}", logs.iter().len());
             for log in logs {
                 println!("{:?}", log);
                 // log.topics:
@@ -153,14 +161,16 @@ mod tests {
                 }
 
                 if let Some(tx_hash) = log.transaction_hash {
-                    let tx = provider.get_transaction(tx_hash).await?;
-                    let calldata = tx.unwrap().input;
+                    let tx = provider.get_transaction(tx_hash).await?.unwrap();
+                    let calldata = tx.input;
                     let blocks = parse_calldata(&function, &calldata)?;
 
-                    // TODO: Apply transaction to L2.
-                    latest_l2_block_number = new_l2_block_number;
+                    let num_blocks = blocks.len();
+                    println!("Parsed {} new blocks", num_blocks);
 
-                    println!("parsed {} new blocks", blocks.len());
+                    for block in blocks {
+                        latest_l2_block_number = tree.insert_block(block);
+                    }
                 }
             }
 
