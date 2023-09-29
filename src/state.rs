@@ -222,7 +222,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
     }
 }
 
-pub(self) fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
+pub fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
     /*
     let num_entries = u32::from_be_bytes([data[3], data[2], data[1], data[0]]);
 
