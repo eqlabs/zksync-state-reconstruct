@@ -24,6 +24,12 @@ fn cli() -> Command {
                                 .default_value("128")
                                 .value_parser(value_parser!(u64)),
                         ),
+                )
+                .subcommand(
+                    Command::new("file")
+                        .about("Import state from file")
+                        .arg(arg!(<FILE> "File to import state from"))
+                        .arg_required_else_help(true),
                 ),
         )
 }
@@ -39,6 +45,10 @@ fn main() {
                     let block_step = args.get_one::<u64>("block-step").expect("required");
                     println!("import from L1, starting from block number {}, processing {} blocks at a time", start_block, block_step);
                     // TODO(tuommaki): Implement block fetch logic.
+                }
+                Some(("file", args)) => {
+                    let input_file = args.get_one::<String>("FILE").expect("required");
+                    println!("import from file (path: \"{}\")", input_file);
                 }
                 _ => unreachable!(),
             }
