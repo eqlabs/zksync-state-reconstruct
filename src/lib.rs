@@ -1,7 +1,7 @@
 #![feature(array_chunks)]
 // #![warn(clippy::pedantic)]
 
-mod state;
+mod snapshot;
 mod tree;
 mod types;
 
@@ -15,6 +15,7 @@ use ethers::{
 use eyre::Result;
 
 pub const INITAL_STATE_PATH: &str = "InitialState.csv";
+pub const STATE_FILE_PATH: &str = "StateSnapshot.json";
 pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
 pub const GENESIS_BLOCK: u64 = 16_627_460;
 pub const BLOCK_STEP: u64 = 128;
@@ -110,7 +111,7 @@ mod tests {
 
     use eyre::Result;
 
-    use crate::tree::TreeWrapper;
+    use crate::{snapshot::StateSnapshot, tree::TreeWrapper};
 
     use super::*;
 
@@ -119,14 +120,31 @@ mod tests {
     async fn it_works() -> Result<()> {
         // TODO: This should be an env variable / CLI argument.
         let db_dir = env::current_dir()?.join("db");
-        // TODO: Save / Load from existing db.
-        if db_dir.exists() {
-            std::fs::remove_dir_all(&db_dir)?;
-        }
-        let mut tree = TreeWrapper::new(db_dir.as_path())?;
+
+        // TODO: Implement graceful shutdown.
+        // If database directory already exists, we try to restore the latest state.
+        // The state contains the last processed block and a mapping of index to key
+        // values, if a state file does not exist, we simply use the defaults instead.
+        let should_restore_state = db_dir.exists();
+        let mut state_snapshot = if should_restore_state {
+            println!("Loading previous state file...");
+            StateSnapshot::read(STATE_FILE_PATH).expect("state file is malformed")
+        } else {
+            println!("No existing database found, starting from genesis...");
+            StateSnapshot::default()
+        };
+
+        // Extract fields from state snapshot.
+        let StateSnapshot {
+            mut current_l1_block_number,
+            mut latest_l2_block_number,
+            ref index_to_key_map,
+        } = state_snapshot;
+
+        let mut tree = TreeWrapper::new(db_dir.as_path(), index_to_key_map.clone())?;
 
         let (provider, contract) = init_eth_adapter("https://eth.llamarpc.com").await;
-        let latest_l1_block = provider
+        let latest_l1_block_number = provider
             .get_block(BlockNumber::Latest)
             .await?
             .unwrap()
@@ -136,26 +154,23 @@ mod tests {
         let event = contract.events_by_name("BlockCommit")?[0].clone();
         let function = contract.functions_by_name("commitBlocks")?[0].clone();
 
-        let mut current_block = GENESIS_BLOCK;
-        let mut latest_l2_block_number = U256::default();
-        while current_block <= latest_l1_block.0[0] {
+        println!("Starting from l1 block: {}", current_l1_block_number);
+        while current_l1_block_number <= latest_l1_block_number.0[0] {
             // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
             // TODO: Filter by executed blocks too.
             let filter = Filter::new()
                 .address(ZK_SYNC_ADDR.parse::<Address>()?)
                 .topic0(event.signature())
-                .from_block(current_block)
-                .to_block(current_block + BLOCK_STEP);
+                .from_block(current_l1_block_number)
+                .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
             let logs = provider.get_logs(&filter).await?;
             for log in logs {
-                println!("{:?}", log);
                 // log.topics:
                 // topics[1]: L2 block number.
                 // topics[2]: L2 block hash.
                 // topics[3]: L2 commitment.
-                // TODO: Check for already processed blocks.
 
                 let new_l2_block_number = U256::from_big_endian(log.topics[1].as_fixed_bytes());
                 if new_l2_block_number <= latest_l2_block_number {
@@ -171,13 +186,20 @@ mod tests {
                     println!("Parsed {} new blocks", num_blocks);
 
                     for block in blocks {
-                        latest_l2_block_number = tree.insert_block(block);
+                        latest_l2_block_number = tree.insert_block(&block);
+
+                        // Update snapshot values.
+                        state_snapshot.latest_l2_block_number = latest_l2_block_number;
+                        state_snapshot.index_to_key_map = tree.index_to_key.clone();
                     }
                 }
             }
-
             // Increment current block index.
-            current_block += BLOCK_STEP;
+            current_l1_block_number += BLOCK_STEP;
+
+            // Update snapshot values and write the current state to a file.
+            state_snapshot.current_l1_block_number = current_l1_block_number;
+            state_snapshot.write(STATE_FILE_PATH)?;
         }
 
         Ok(())
