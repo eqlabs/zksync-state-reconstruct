@@ -231,29 +231,10 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
 }
 
 pub fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
-    /*
-    let num_entries = u32::from_be_bytes([data[3], data[2], data[1], data[0]]);
-
-    */
-    let mut offset = 0;
-
-    let dict_len = u16::from_be_bytes([data[offset + 1], data[offset]]);
-
-    offset += 2;
-
-    let end = 2 + dict_len as usize;
-    let dict = data[offset..end].to_vec();
-    offset += end;
-    let encoded_data = data[offset..].to_vec();
-
-    // Each dictionary element should be 8 bytes. Verify alignment.
-    if dict.len() % 8 != 0 {
-        return Err(ParseError::InvalidCompressedByteCode(format!(
-            "invalid dict length: {}",
-            dict.len()
-        ))
-        .into());
-    }
+    let dict_len = u16::from_be_bytes([data[0], data[1]]);
+    let end = 2 + dict_len as usize * 8;
+    let dict = data[2..end].to_vec();
+    let encoded_data = data[end..].to_vec();
 
     let dict: Vec<&[u8]> = dict.chunks(8).collect();
 
@@ -271,6 +252,7 @@ pub fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
     let mut bytecode = vec![];
     for idx in encoded_data.chunks(2) {
         let idx = u16::from_be_bytes([idx[0], idx[1]]) as usize;
+
         if dict.len() <= idx {
             return Err(ParseError::InvalidCompressedByteCode(format!(
                 "encoded data index ({}) exceeds dictionary size ({})",
