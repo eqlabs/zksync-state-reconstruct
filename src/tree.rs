@@ -8,7 +8,7 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use eyre::Result;
 
-use crate::{state::CommitBlockInfoV1, INITAL_STATE_PATH};
+use crate::{types::CommitBlockInfoV1, INITAL_STATE_PATH};
 
 pub struct TreeWrapper<'a> {
     pub tree: MerkleTree<'a, RocksDBWrapper>,

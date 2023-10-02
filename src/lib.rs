@@ -3,7 +3,9 @@
 
 mod state;
 mod tree;
-use crate::state::CommitBlockInfoV1;
+mod types;
+
+use crate::types::CommitBlockInfoV1;
 
 use ethers::{
     abi::{Contract, Function},
@@ -33,10 +35,10 @@ pub fn parse_calldata(
 ) -> Result<Vec<CommitBlockInfoV1>> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
-        .map_err(|e| state::ParseError::InvalidCalldata(e.to_string()))?;
+        .map_err(|e| types::ParseError::InvalidCalldata(e.to_string()))?;
 
     if parsed_input.len() != 2 {
-        return Err(state::ParseError::InvalidCalldata(format!(
+        return Err(types::ParseError::InvalidCalldata(format!(
             "invalid number of parameters (got {}, expected 2) for commitBlocks function",
             parsed_input.len()
         ))
@@ -45,26 +47,26 @@ pub fn parse_calldata(
 
     let new_blocks_data = parsed_input
         .pop()
-        .ok_or_else(|| state::ParseError::InvalidCalldata("new blocks data".to_string()))?;
+        .ok_or_else(|| types::ParseError::InvalidCalldata("new blocks data".to_string()))?;
     let stored_block_info = parsed_input
         .pop()
-        .ok_or_else(|| state::ParseError::InvalidCalldata("stored block info".to_string()))?;
+        .ok_or_else(|| types::ParseError::InvalidCalldata("stored block info".to_string()))?;
 
     let abi::Token::Tuple(stored_block_info) = stored_block_info else {
         return Err(
-            state::ParseError::InvalidCalldata("invalid StoredBlockInfo".to_string()).into(),
+            types::ParseError::InvalidCalldata("invalid StoredBlockInfo".to_string()).into(),
         );
     };
 
     let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
-        return Err(state::ParseError::InvalidStoredBlockInfo(
+        return Err(types::ParseError::InvalidStoredBlockInfo(
             "cannot parse previous L2 block number".to_string(),
         )
         .into());
     };
 
     let abi::Token::Uint(_previous_enumeration_index) = stored_block_info[2].clone() else {
-        return Err(state::ParseError::InvalidStoredBlockInfo(
+        return Err(types::ParseError::InvalidStoredBlockInfo(
             "cannot parse previous enumeration index".to_string(),
         )
         .into());
@@ -81,7 +83,7 @@ fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> 
     let mut res = vec![];
 
     let abi::Token::Array(data) = data else {
-        return Err(state::ParseError::InvalidCommitBlockInfo(
+        return Err(types::ParseError::InvalidCommitBlockInfo(
             "cannot convert newBlocksData to array".to_string(),
         )
         .into());
