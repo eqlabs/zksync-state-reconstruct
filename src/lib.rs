@@ -5,7 +5,7 @@ mod snapshot;
 mod tree;
 mod types;
 
-use crate::types::CommitBlockInfoV1;
+pub use crate::types::CommitBlockInfoV1;
 
 use ethers::{
     abi::{Contract, Function},
