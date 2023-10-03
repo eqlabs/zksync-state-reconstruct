@@ -13,6 +13,10 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+# Local state files.
+db/
+StateSnapshot.json
+
 # Direnv files.
 .direnv/
 .envrc
@@ -20,6 +24,3 @@ Cargo.lock
 # Nix files.
 flake.nix
 flake.lock
-
-# db
-db/
