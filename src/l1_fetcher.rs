@@ -4,7 +4,6 @@ use rand::random;
 use state_reconstruct::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
 use state_reconstruct::parse_calldata;
 use state_reconstruct::CommitBlockInfoV1;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
 
@@ -26,7 +25,7 @@ impl L1Fetcher {
 
     pub async fn fetch(
         &self,
-        sink: mpsc::Sender<Arc<Vec<CommitBlockInfoV1>>>,
+        sink: mpsc::Sender<Vec<CommitBlockInfoV1>>,
         start_block: Option<U64>,
         end_block: Option<U64>,
     ) -> Result<()> {
@@ -72,12 +71,12 @@ impl L1Fetcher {
                     };
                 }
 
-                let tx = match tx {
-                    Some(tx) => Arc::new(tx.input.clone()),
+                let data = match tx {
+                    Some(tx) => tx.input,
                     None => continue,
                 };
 
-                calldata_tx.send(tx).await.unwrap();
+                calldata_tx.send(data).await.unwrap();
             }
         });
 
@@ -91,7 +90,7 @@ impl L1Fetcher {
                     }
                 };
 
-                sink.send(Arc::new(blocks)).await.unwrap();
+                sink.send(blocks).await.unwrap();
             }
         });
 

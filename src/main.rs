@@ -6,7 +6,6 @@ use ethers::types::U64;
 use eyre::Result;
 use l1_fetcher::L1Fetcher;
 use state_reconstruct::CommitBlockInfoV1;
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use constants::ethereum;
@@ -59,7 +58,7 @@ async fn main() -> Result<()> {
                 println!("reconstruct from L1, starting from block number {}, processing {} blocks at a time", start_block, block_step);
 
                 let fetcher = L1Fetcher::new(http_url)?;
-                let (tx, mut rx) = mpsc::channel::<Arc<Vec<CommitBlockInfoV1>>>(5);
+                let (tx, mut rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
                 tokio::spawn(async move {
                     while let Some(blks) = rx.recv().await {
                         blks.iter().for_each(|x| println!("{:?}", x));
