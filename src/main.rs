@@ -1,14 +1,23 @@
+#![feature(array_chunks)]
+
 mod constants;
 mod l1_fetcher;
+mod processor;
+mod types;
+
+use std::env;
 
 use clap::{arg, value_parser, Command};
+use constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK};
 use ethers::types::U64;
 use eyre::Result;
 use l1_fetcher::L1Fetcher;
-use state_reconstruct::CommitBlockInfoV1;
 use tokio::sync::mpsc;
 
-use constants::ethereum;
+use crate::{
+    processor::{tree::TreeProcessor, Processor},
+    types::CommitBlockInfoV1,
+};
 
 fn cli() -> Command {
     Command::new("state-reconstruct")
@@ -26,13 +35,13 @@ fn cli() -> Command {
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
                                 .help("Ethereum block number to start state import from")
-                                .default_value(ethereum::GENESIS_BLOCK.to_string())
+                                .default_value(GENESIS_BLOCK.to_string())
                                 .value_parser(value_parser!(u64)),
                         )
                         .arg(
                             arg!(--"block-step" <BLOCK_STEP>)
                                 .help("Number of blocks to filter & process in one step")
-                                .default_value(ethereum::BLOCK_STEP.to_string())
+                                .default_value(BLOCK_STEP.to_string())
                                 .value_parser(value_parser!(u64)),
                         ),
                 )
@@ -52,18 +61,19 @@ async fn main() -> Result<()> {
     match matches.subcommand() {
         Some(("reconstruct", sub_matches)) => match sub_matches.subcommand() {
             Some(("l1", args)) => {
+                // TODO: Use start_block from snapshot.
                 let start_block = args.get_one::<u64>("start-block").expect("required");
                 let block_step = args.get_one::<u64>("block-step").expect("required");
                 let http_url = args.get_one::<String>("http-url").expect("required");
                 println!("reconstruct from L1, starting from block number {}, processing {} blocks at a time", start_block, block_step);
 
+                // TODO: This should be an env variable / CLI argument.
+                let db_dir = env::current_dir()?.join("db");
+
                 let fetcher = L1Fetcher::new(http_url)?;
-                let (tx, mut rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
-                tokio::spawn(async move {
-                    while let Some(blks) = rx.recv().await {
-                        blks.iter().for_each(|x| println!("{:?}", x));
-                    }
-                });
+                let processor = TreeProcessor::new(&db_dir)?;
+                let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+                processor.run(rx);
 
                 fetcher.fetch(tx, Some(U64([*start_block])), None).await?;
             }

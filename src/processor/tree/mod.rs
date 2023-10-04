@@ -32,17 +32,13 @@ impl TreeProcessor<'static> {
             StateSnapshot::default()
         };
 
-        // Extract fields from state snapshot.
+        // Extract `index_to_key_map` from state snapshot.
         let StateSnapshot {
-            // current_l1_block_number,
-            // latest_l2_block_number,
-            // latest_hash_root,
             ref index_to_key_map,
             ..
         } = snapshot;
 
         let tree = TreeWrapper::new(db_dir, index_to_key_map.clone())?;
-        // assert_eq!(tree.latest_root_hash(), latest_hash_root);
 
         Ok(Self { tree, snapshot })
     }

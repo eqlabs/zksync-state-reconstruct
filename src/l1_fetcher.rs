@@ -1,11 +1,12 @@
+use ethers::abi::Function;
 use ethers::{abi::Contract, prelude::*, providers::Provider};
 use eyre::Result;
 use rand::random;
-use state_reconstruct::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
-use state_reconstruct::parse_calldata;
-use state_reconstruct::CommitBlockInfoV1;
 use tokio::sync::mpsc;
 use tokio::time::{sleep, Duration};
+
+use crate::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
+use crate::types::{CommitBlockInfoV1, ParseError};
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
@@ -130,4 +131,72 @@ impl L1Fetcher {
 
         Ok(())
     }
+}
+
+pub fn parse_calldata(
+    commit_blocks_fn: &Function,
+    calldata: &[u8],
+) -> Result<Vec<CommitBlockInfoV1>> {
+    let mut parsed_input = commit_blocks_fn
+        .decode_input(&calldata[4..])
+        .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
+
+    if parsed_input.len() != 2 {
+        return Err(ParseError::InvalidCalldata(format!(
+            "invalid number of parameters (got {}, expected 2) for commitBlocks function",
+            parsed_input.len()
+        ))
+        .into());
+    }
+
+    let new_blocks_data = parsed_input
+        .pop()
+        .ok_or_else(|| ParseError::InvalidCalldata("new blocks data".to_string()))?;
+    let stored_block_info = parsed_input
+        .pop()
+        .ok_or_else(|| ParseError::InvalidCalldata("stored block info".to_string()))?;
+
+    let abi::Token::Tuple(stored_block_info) = stored_block_info else {
+        return Err(ParseError::InvalidCalldata("invalid StoredBlockInfo".to_string()).into());
+    };
+
+    let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
+        return Err(ParseError::InvalidStoredBlockInfo(
+            "cannot parse previous L2 block number".to_string(),
+        )
+        .into());
+    };
+
+    let abi::Token::Uint(_previous_enumeration_index) = stored_block_info[2].clone() else {
+        return Err(ParseError::InvalidStoredBlockInfo(
+            "cannot parse previous enumeration index".to_string(),
+        )
+        .into());
+    };
+
+    //let previous_enumeration_index = previous_enumeration_index.0[0];
+    // TODO: What to do here?
+    // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
+
+    parse_commit_block_info(&new_blocks_data)
+}
+
+fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> {
+    let mut res = vec![];
+
+    let abi::Token::Array(data) = data else {
+        return Err(ParseError::InvalidCommitBlockInfo(
+            "cannot convert newBlocksData to array".to_string(),
+        )
+        .into());
+    };
+
+    for data in data.iter() {
+        match CommitBlockInfoV1::try_from(data) {
+            Ok(blk) => res.push(blk),
+            Err(e) => println!("failed to parse commit block info: {}", e),
+        }
+    }
+
+    Ok(res)
 }
