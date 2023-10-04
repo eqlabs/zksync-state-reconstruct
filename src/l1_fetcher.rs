@@ -1,10 +1,12 @@
 use ethers::{abi::Contract, prelude::*, providers::Provider};
 use eyre::Result;
+use rand::random;
 use state_reconstruct::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
 use state_reconstruct::parse_calldata;
 use state_reconstruct::CommitBlockInfoV1;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
@@ -51,13 +53,24 @@ impl L1Fetcher {
         let provider = self.provider.clone();
         tokio::spawn(async move {
             while let Some(hash) = hash_rx.recv().await {
-                let tx = match provider.get_transaction(hash).await {
-                    Ok(x) => x,
-                    Err(e) => {
-                        println!("failed to get transaction for hash {}: {}", hash, e);
-                        continue;
-                    }
-                };
+                let mut tx: Option<_> = None;
+
+                'retry: for attempt in 1..6 {
+                    match provider.get_transaction(hash).await {
+                        Ok(x) => {
+                            tx = x;
+                            break 'retry;
+                        }
+                        Err(e) => {
+                            println!(
+                                "attempt {}: failed to get transaction for hash {}: {}",
+                                attempt, hash, e
+                            );
+
+                            sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
+                        }
+                    };
+                }
 
                 let tx = match tx {
                     Some(tx) => Arc::new(tx.input.to_owned()),
