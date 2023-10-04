@@ -1,10 +1,8 @@
 use ethers::{abi::Contract, prelude::*, providers::Provider};
 use eyre::Result;
+use state_reconstruct::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
 use state_reconstruct::parse_calldata;
 use state_reconstruct::CommitBlockInfoV1;
-use state_reconstruct::BLOCK_STEP;
-use state_reconstruct::GENESIS_BLOCK;
-use state_reconstruct::ZK_SYNC_ADDR;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 

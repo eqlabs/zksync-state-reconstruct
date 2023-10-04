@@ -1,3 +1,4 @@
+mod constants;
 mod l1_fetcher;
 
 use clap::{arg, value_parser, Command};
@@ -7,6 +8,8 @@ use l1_fetcher::L1Fetcher;
 use state_reconstruct::CommitBlockInfoV1;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+
+use constants::ethereum;
 
 fn cli() -> Command {
     Command::new("state-reconstruct")
@@ -28,13 +31,13 @@ fn cli() -> Command {
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
                                 .help("Ethereum block number to start state import from")
-                                .default_value(state_reconstruct::GENESIS_BLOCK.to_string())
+                                .default_value(ethereum::GENESIS_BLOCK.to_string())
                                 .value_parser(value_parser!(u64)),
                         )
                         .arg(
                             arg!(--"block-step" <BLOCK_STEP>)
                                 .help("Number of blocks to filter & process in one step")
-                                .default_value(state_reconstruct::BLOCK_STEP.to_string())
+                                .default_value(ethereum::BLOCK_STEP.to_string())
                                 .value_parser(value_parser!(u64)),
                         ),
                 )
