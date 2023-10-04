@@ -73,7 +73,7 @@ impl L1Fetcher {
                 }
 
                 let tx = match tx {
-                    Some(tx) => Arc::new(tx.input.to_owned()),
+                    Some(tx) => Arc::new(tx.input.clone()),
                     None => continue,
                 };
 
