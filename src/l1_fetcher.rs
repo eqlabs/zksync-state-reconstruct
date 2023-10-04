@@ -83,7 +83,7 @@ impl L1Fetcher {
 
         tokio::spawn(async move {
             while let Some(calldata) = calldata_rx.recv().await {
-                let blocks = match parse_calldata(&function, calldata.as_ref()) {
+                let blocks = match parse_calldata(&function, &calldata) {
                     Ok(blks) => blks,
                     Err(e) => {
                         println!("failed to parse calldata: {}", e);

@@ -26,7 +26,6 @@ fn cli() -> Command {
                         .arg(
                             arg!(--"http-url" <HTTP_URL>)
                                 .help("Ethereum JSON-RPC HTTP URL")
-                                .default_value("https://eth.llamarpc.com"),
                         )
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
