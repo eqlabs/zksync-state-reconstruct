@@ -21,6 +21,7 @@ pub enum ParseError {
 }
 
 /// Data needed to commit new block
+#[derive(Debug)]
 pub struct CommitBlockInfoV1 {
     /// L2 block number.
     pub block_number: u64,

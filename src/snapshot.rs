@@ -5,7 +5,7 @@ use ethers::types::U256;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
-use crate::GENESIS_BLOCK;
+use crate::constants::ethereum;
 
 /// Struct containing the fields used for restoring the tree state.
 #[derive(Serialize, Deserialize)]
@@ -21,7 +21,7 @@ pub struct StateSnapshot {
 impl Default for StateSnapshot {
     fn default() -> Self {
         Self {
-            current_l1_block_number: GENESIS_BLOCK,
+            current_l1_block_number: ethereum::GENESIS_BLOCK,
             latest_l2_block_number: U256::default(),
             index_to_key_map: IndexSet::default(),
         }

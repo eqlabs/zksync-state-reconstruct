@@ -1,11 +1,12 @@
 #![feature(array_chunks)]
 // #![warn(clippy::pedantic)]
 
+pub mod constants;
 mod snapshot;
 mod tree;
 mod types;
 
-use crate::types::CommitBlockInfoV1;
+pub use crate::types::CommitBlockInfoV1;
 
 use ethers::{
     abi::{Contract, Function},
@@ -16,9 +17,6 @@ use eyre::Result;
 
 pub const INITAL_STATE_PATH: &str = "InitialState.csv";
 pub const STATE_FILE_PATH: &str = "StateSnapshot.json";
-pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
-pub const GENESIS_BLOCK: u64 = 16_627_460;
-pub const BLOCK_STEP: u64 = 128;
 
 pub async fn init_eth_adapter(http_url: &str) -> (Provider<Http>, Contract) {
     let provider =
@@ -111,7 +109,7 @@ mod tests {
 
     use eyre::Result;
 
-    use crate::{snapshot::StateSnapshot, tree::TreeWrapper};
+    use crate::{constants::ethereum, snapshot::StateSnapshot, tree::TreeWrapper};
 
     use super::*;
 
@@ -159,10 +157,10 @@ mod tests {
             // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
             // TODO: Filter by executed blocks too.
             let filter = Filter::new()
-                .address(ZK_SYNC_ADDR.parse::<Address>()?)
+                .address(ethereum::ZK_SYNC_ADDR.parse::<Address>()?)
                 .topic0(event.signature())
                 .from_block(current_l1_block_number)
-                .to_block(current_l1_block_number + BLOCK_STEP);
+                .to_block(current_l1_block_number + ethereum::BLOCK_STEP);
 
             // Grab all relevant logs.
             let logs = provider.get_logs(&filter).await?;
@@ -195,7 +193,7 @@ mod tests {
                 }
             }
             // Increment current block index.
-            current_l1_block_number += BLOCK_STEP;
+            current_l1_block_number += ethereum::BLOCK_STEP;
 
             // Update snapshot values and write the current state to a file.
             state_snapshot.current_l1_block_number = current_l1_block_number;
