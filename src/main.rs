@@ -23,10 +23,7 @@ fn cli() -> Command {
                 .subcommand(
                     Command::new("l1")
                         .about("Read state from Ethereum L1")
-                        .arg(
-                            arg!(--"http-url" <HTTP_URL>)
-                                .help("Ethereum JSON-RPC HTTP URL")
-                        )
+                        .arg(arg!(--"http-url" <HTTP_URL>).help("Ethereum JSON-RPC HTTP URL"))
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
                                 .help("Ethereum block number to start state import from")
