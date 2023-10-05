@@ -3,6 +3,7 @@ mod tree_wrapper;
 
 use std::path::Path;
 
+use async_trait::async_trait;
 use eyre::Result;
 use tokio::{sync::mpsc, task::JoinHandle};
 
@@ -44,9 +45,9 @@ impl TreeProcessor<'static> {
     }
 }
 
+#[async_trait]
 impl Processor for TreeProcessor<'static> {
-    fn run(mut self, mut rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>) -> JoinHandle<()> {
-        tokio::spawn(async move {
+    async fn run(mut self, mut rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>) {
             while let Some(blocks) = rx.recv().await {
                 for block in blocks {
                     // Check if we've already processed this block.

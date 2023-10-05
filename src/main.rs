@@ -73,7 +73,10 @@ async fn main() -> Result<()> {
                 let fetcher = L1Fetcher::new(http_url)?;
                 let processor = TreeProcessor::new(&db_dir)?;
                 let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
-                processor.run(rx);
+
+                tokio::spawn(async move {
+                    processor.run(rx).await;
+                });
 
                 fetcher.fetch(tx, Some(U64([*start_block])), None).await?;
             }
