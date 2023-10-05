@@ -7,12 +7,9 @@ use async_trait::async_trait;
 use eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::constants::storage::STATE_FILE_PATH;
-use crate::types::CommitBlockInfoV1;
-
 use self::{snapshot::StateSnapshot, tree_wrapper::TreeWrapper};
-
 use super::Processor;
+use crate::{constants::storage::STATE_FILE_PATH, types::CommitBlockInfoV1};
 
 pub struct TreeProcessor<'a> {
     tree: TreeWrapper<'a>,

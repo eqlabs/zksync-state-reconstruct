@@ -1,11 +1,10 @@
 use std::{fs, path::Path, str::FromStr};
 
 use ethers::types::{Address, H256, U256};
+use eyre::Result;
 use indexmap::IndexSet;
 use zk_evm::aux_structures::LogQuery;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
-
-use eyre::Result;
 
 use crate::{constants::storage::INITAL_STATE_PATH, CommitBlockInfoV1};
 
