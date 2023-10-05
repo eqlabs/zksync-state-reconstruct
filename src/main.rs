@@ -8,7 +8,7 @@ mod types;
 use std::env;
 
 use clap::{arg, value_parser, Command};
-use constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK};
+use constants::ethereum;
 use ethers::types::U64;
 use eyre::Result;
 use l1_fetcher::L1Fetcher;
@@ -35,13 +35,13 @@ fn cli() -> Command {
                         .arg(
                             arg!(--"start-block" <START_BLOCK>)
                                 .help("Ethereum block number to start state import from")
-                                .default_value(GENESIS_BLOCK.to_string())
+                                .default_value(ethereum::GENESIS_BLOCK.to_string())
                                 .value_parser(value_parser!(u64)),
                         )
                         .arg(
                             arg!(--"block-step" <BLOCK_STEP>)
                                 .help("Number of blocks to filter & process in one step")
-                                .default_value(BLOCK_STEP.to_string())
+                                .default_value(ethereum::BLOCK_STEP.to_string())
                                 .value_parser(value_parser!(u64)),
                         ),
                 )

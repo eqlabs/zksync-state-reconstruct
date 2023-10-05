@@ -7,7 +7,7 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use eyre::Result;
 
-use crate::{constants::ethereum::INITAL_STATE_PATH, CommitBlockInfoV1};
+use crate::{constants::storage::INITAL_STATE_PATH, CommitBlockInfoV1};
 
 pub type RootHash = H256;
 

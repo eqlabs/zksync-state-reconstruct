@@ -5,9 +5,10 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use eyre::Result;
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::sync::mpsc;
 
-use crate::{constants::ethereum::STATE_FILE_PATH, types::CommitBlockInfoV1};
+use crate::constants::storage::STATE_FILE_PATH;
+use crate::types::CommitBlockInfoV1;
 
 use self::{snapshot::StateSnapshot, tree_wrapper::TreeWrapper};
 
@@ -36,7 +37,7 @@ impl TreeProcessor<'static> {
         // Extract `index_to_key_map` from state snapshot.
         let StateSnapshot {
             ref index_to_key_map,
-            ..
+            .. // Ignore the rest of the fields.
         } = snapshot;
 
         let tree = TreeWrapper::new(db_dir, index_to_key_map.clone())?;
@@ -48,27 +49,26 @@ impl TreeProcessor<'static> {
 #[async_trait]
 impl Processor for TreeProcessor<'static> {
     async fn run(mut self, mut rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>) {
-            while let Some(blocks) = rx.recv().await {
-                for block in blocks {
-                    // Check if we've already processed this block.
-                    if self.snapshot.latest_l2_block_number >= block.block_number {
-                        println!(
-                            "Block {} has already been processed, skipping.",
-                            block.block_number
-                        );
-                        continue;
-                    }
-
-                    self.tree.insert_block(&block);
-
-                    // Update snapshot values.
-                    self.snapshot.latest_l2_block_number = block.block_number;
-                    self.snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
+        while let Some(blocks) = rx.recv().await {
+            for block in blocks {
+                // Check if we've already processed this block.
+                if self.snapshot.latest_l2_block_number >= block.block_number {
+                    println!(
+                        "Block {} has already been processed, skipping.",
+                        block.block_number
+                    );
+                    continue;
                 }
 
-                // Write the current state to a file.
-                self.snapshot.write(STATE_FILE_PATH).unwrap();
+                self.tree.insert_block(&block);
+
+                // Update snapshot values.
+                self.snapshot.latest_l2_block_number = block.block_number;
+                self.snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
             }
-        })
+
+            // Write the current state to a file.
+            self.snapshot.write(STATE_FILE_PATH).unwrap();
+        }
     }
 }
