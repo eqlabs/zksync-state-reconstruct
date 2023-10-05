@@ -1,5 +1,3 @@
-// FIXME: Remove once we have a binary in place.
-#![allow(dead_code)]
 use std::{fs, path::Path, str::FromStr};
 
 use ethers::types::{Address, H256, U256};
@@ -9,32 +7,36 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use eyre::Result;
 
-use crate::{types::CommitBlockInfoV1, INITAL_STATE_PATH};
+use crate::{constants::storage::INITAL_STATE_PATH, CommitBlockInfoV1};
+
+pub type RootHash = H256;
 
 pub struct TreeWrapper<'a> {
-    pub tree: MerkleTree<'a, RocksDBWrapper>,
-    pub index_to_key: IndexSet<U256>,
+    tree: MerkleTree<'a, RocksDBWrapper>,
+    pub index_to_key_map: IndexSet<U256>,
 }
 
 impl TreeWrapper<'static> {
     /// Attempts to create a new [`TreeWrapper`].
-    pub fn new(db_dir: &Path, mut index_to_key: IndexSet<U256>) -> Result<Self> {
+    pub fn new(db_dir: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
         let db = RocksDBWrapper::new(db_dir);
         let mut tree = MerkleTree::new(db);
 
         // If an existing `index_to_key` mapping was supplied, use that.
         // Otherwise, reconstruct the genesis state.
-        if index_to_key.is_empty() {
+        if index_to_key_map.is_empty() {
             println!("was empty!");
-            reconstruct_genesis_state(&mut tree, &mut index_to_key, INITAL_STATE_PATH)?;
+            reconstruct_genesis_state(&mut tree, &mut index_to_key_map, INITAL_STATE_PATH)?;
         }
 
-        Ok(Self { tree, index_to_key })
+        Ok(Self {
+            tree,
+            index_to_key_map,
+        })
     }
 
-    /// Inserts a block into the tree and returns the new block number.
-    pub fn insert_block(&mut self, block: &CommitBlockInfoV1) -> U256 {
-        let new_l2_block_number = block.block_number;
+    /// Inserts a block into the tree and returns the root hash of the resulting state tree.
+    pub fn insert_block(&mut self, block: &CommitBlockInfoV1) -> RootHash {
         // INITIAL CALLDATA.
         let mut key_value_pairs: Vec<(U256, H256)> =
             Vec::with_capacity(block.initial_storage_changes.len());
@@ -43,14 +45,14 @@ impl TreeWrapper<'static> {
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
-            self.index_to_key.insert(key);
+            self.index_to_key_map.insert(key);
         }
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
             let index = *index as usize;
             // Index is 1-based so we subtract 1.
-            let key = *self.index_to_key.get_index(index - 1).unwrap();
+            let key = *self.index_to_key_map.get_index(index - 1).unwrap();
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
@@ -62,11 +64,11 @@ impl TreeWrapper<'static> {
         assert_eq!(root_hash.as_bytes(), block.new_state_root);
         println!(
             "Root hash of block {} = {}",
-            new_l2_block_number,
+            block.block_number,
             hex::encode(root_hash)
         );
 
-        U256::from(new_l2_block_number)
+        root_hash
     }
 }
 

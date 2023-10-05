@@ -269,6 +269,7 @@ pub fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
     Ok(bytecode)
 }
 
+#[allow(dead_code)]
 pub enum L2ToL1Pubdata {
     L2ToL1Log,
     L2ToL2Message,
@@ -277,6 +278,7 @@ pub enum L2ToL1Pubdata {
 }
 
 /// Data needed to commit new block
+#[allow(dead_code)]
 pub struct CommitBlockInfoV2 {
     /// L2 block number.
     pub block_number: u64,
@@ -297,6 +299,7 @@ pub struct CommitBlockInfoV2 {
 }
 
 impl CommitBlockInfoV1 {
+    #[allow(dead_code)]
     pub fn as_v2(&self) -> CommitBlockInfoV2 {
         CommitBlockInfoV2 {
             block_number: self.block_number,

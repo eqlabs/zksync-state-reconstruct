@@ -1,14 +1,23 @@
+#![feature(array_chunks)]
+
 mod constants;
 mod l1_fetcher;
+mod processor;
+mod types;
+
+use std::env;
 
 use clap::{arg, value_parser, Command};
+use constants::ethereum;
 use ethers::types::U64;
 use eyre::Result;
 use l1_fetcher::L1Fetcher;
-use state_reconstruct::CommitBlockInfoV1;
 use tokio::sync::mpsc;
 
-use constants::ethereum;
+use crate::{
+    processor::{tree::TreeProcessor, Processor},
+    types::CommitBlockInfoV1,
+};
 
 fn cli() -> Command {
     Command::new("state-reconstruct")
@@ -52,17 +61,21 @@ async fn main() -> Result<()> {
     match matches.subcommand() {
         Some(("reconstruct", sub_matches)) => match sub_matches.subcommand() {
             Some(("l1", args)) => {
+                // TODO: Use start_block from snapshot.
                 let start_block = args.get_one::<u64>("start-block").expect("required");
                 let block_step = args.get_one::<u64>("block-step").expect("required");
                 let http_url = args.get_one::<String>("http-url").expect("required");
                 println!("reconstruct from L1, starting from block number {}, processing {} blocks at a time", start_block, block_step);
 
+                // TODO: This should be an env variable / CLI argument.
+                let db_dir = env::current_dir()?.join("db");
+
                 let fetcher = L1Fetcher::new(http_url)?;
-                let (tx, mut rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+                let processor = TreeProcessor::new(&db_dir)?;
+                let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+
                 tokio::spawn(async move {
-                    while let Some(blks) = rx.recv().await {
-                        blks.iter().for_each(|x| println!("{:?}", x));
-                    }
+                    processor.run(rx).await;
                 });
 
                 fetcher.fetch(tx, Some(U64([*start_block])), None).await?;
