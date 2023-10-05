@@ -1,7 +1,8 @@
+use std::vec::Vec;
+
 use ethers::{abi, types::U256};
 use eyre::Result;
 use indexmap::IndexMap;
-use std::vec::Vec;
 use thiserror::Error;
 
 #[allow(clippy::enum_variant_names)]

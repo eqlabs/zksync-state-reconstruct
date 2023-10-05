@@ -1,12 +1,19 @@
-use ethers::abi::Function;
-use ethers::{abi::Contract, prelude::*, providers::Provider};
+use ethers::{
+    abi::{Contract, Function},
+    prelude::*,
+    providers::Provider,
+};
 use eyre::Result;
 use rand::random;
-use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+use tokio::{
+    sync::mpsc,
+    time::{sleep, Duration},
+};
 
-use crate::constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR};
-use crate::types::{CommitBlockInfoV1, ParseError};
+use crate::{
+    constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    types::{CommitBlockInfoV1, ParseError},
+};
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
