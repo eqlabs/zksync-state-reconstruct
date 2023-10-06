@@ -1,7 +1,7 @@
 mod snapshot;
 mod tree_wrapper;
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use eyre::Result;
@@ -9,23 +9,27 @@ use tokio::sync::mpsc;
 
 use self::{snapshot::StateSnapshot, tree_wrapper::TreeWrapper};
 use super::Processor;
-use crate::{constants::storage::STATE_FILE_PATH, types::CommitBlockInfoV1};
+use crate::{constants::storage::STATE_FILE_NAME, types::CommitBlockInfoV1};
 
 pub struct TreeProcessor<'a> {
+    /// The path to the directory in which database files and state snapshots will be written.
+    db_path: PathBuf,
+    /// The internal merkle tree.
     tree: TreeWrapper<'a>,
+    /// The stored state snapshot.
     snapshot: StateSnapshot,
 }
 
 impl TreeProcessor<'static> {
-    pub fn new(db_dir: &Path) -> Result<Self> {
+    pub fn new(db_path: PathBuf) -> Result<Self> {
         // TODO: Implement graceful shutdown.
         // If database directory already exists, we try to restore the latest state.
         // The state contains the last processed block and a mapping of index to key
         // values, if a state file does not exist, we simply use the defaults instead.
-        let should_restore_state = db_dir.exists();
+        let should_restore_state = db_path.exists();
         let snapshot = if should_restore_state {
             println!("Loading previous state file...");
-            StateSnapshot::read(STATE_FILE_PATH).expect("state file is malformed")
+            StateSnapshot::read(&db_path.join(STATE_FILE_NAME)).expect("state file is malformed")
         } else {
             println!("No existing database found, starting from genesis...");
             StateSnapshot::default()
@@ -37,9 +41,13 @@ impl TreeProcessor<'static> {
             .. // Ignore the rest of the fields.
         } = snapshot;
 
-        let tree = TreeWrapper::new(db_dir, index_to_key_map.clone())?;
+        let tree = TreeWrapper::new(&db_path, index_to_key_map.clone())?;
 
-        Ok(Self { tree, snapshot })
+        Ok(Self {
+            db_path,
+            tree,
+            snapshot,
+        })
     }
 }
 
@@ -65,7 +73,8 @@ impl Processor for TreeProcessor<'static> {
             }
 
             // Write the current state to a file.
-            self.snapshot.write(STATE_FILE_PATH).unwrap();
+            let state_file_path = self.db_path.join(STATE_FILE_NAME);
+            self.snapshot.write(&state_file_path).unwrap();
         }
     }
 }

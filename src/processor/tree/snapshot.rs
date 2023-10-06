@@ -1,4 +1,4 @@
-use std::{fs, io};
+use std::{fs, io, path::Path};
 
 use ethers::types::U256;
 use indexmap::IndexSet;
@@ -15,7 +15,7 @@ pub struct StateSnapshot {
 
 impl StateSnapshot {
     /// Reads and serializes the json file containing the index to key mappings.
-    pub fn read(path: &str) -> Result<StateSnapshot, io::Error> {
+    pub fn read(path: &Path) -> Result<StateSnapshot, io::Error> {
         let contents = fs::read_to_string(path)?;
         let state: StateSnapshot = serde_json::from_str(&contents)?;
 
@@ -23,7 +23,7 @@ impl StateSnapshot {
     }
 
     /// Writes the json file containing the index to key mappings.
-    pub fn write(&self, path: &str) -> Result<(), io::Error> {
+    pub fn write(&self, path: &Path) -> Result<(), io::Error> {
         let content = serde_json::to_string_pretty(&self)?;
         fs::write(path, content)
     }
