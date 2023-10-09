@@ -15,7 +15,7 @@ pub struct TreeProcessor<'a> {
     /// The path to the directory in which database files and state snapshots will be written.
     db_path: PathBuf,
     /// The internal merkle tree.
-    tree: TreeWrapper<'a>,
+    pub tree: TreeWrapper<'a>,
     /// The stored state snapshot.
     snapshot: StateSnapshot,
 }
