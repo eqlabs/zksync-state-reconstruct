@@ -6,7 +6,7 @@ mod l1_fetcher;
 mod processor;
 mod types;
 
-use std::env;
+use std::{env, path::Path};
 
 use clap::Parser;
 use cli::*;
@@ -16,7 +16,7 @@ use l1_fetcher::L1Fetcher;
 use tokio::sync::mpsc;
 
 use crate::{
-    processor::{tree::TreeProcessor, Processor},
+    processor::{json::JsonSerializationProcessor, tree::TreeProcessor, Processor},
     types::CommitBlockInfoV1,
 };
 
@@ -46,6 +46,31 @@ async fn main() -> Result<()> {
             }
             ReconstructSource::File { file: _ } => todo!(),
         },
+        Commands::Download {
+            http_url,
+            start_block,
+            block_step: _,
+            block_count,
+            file,
+        } => {
+            let fetcher = L1Fetcher::new(&http_url)?;
+            let processor = JsonSerializationProcessor::new(Path::new(&file))?;
+            let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+
+            tokio::spawn(async move {
+                processor.run(rx).await;
+            });
+
+            let end_block = match block_count {
+                Some(n) => Some(U64([start_block + n])),
+                None => None,
+            };
+
+            fetcher
+                .fetch(tx, Some(U64([start_block])), end_block)
+                .await?;
+        }
+        _ => unreachable!(),
     }
 
     Ok(())

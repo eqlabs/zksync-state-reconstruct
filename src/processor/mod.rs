@@ -3,6 +3,7 @@ use tokio::sync::mpsc;
 
 use crate::types::CommitBlockInfoV1;
 
+pub mod json;
 pub mod tree;
 
 #[async_trait]
