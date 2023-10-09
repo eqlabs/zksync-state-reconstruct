@@ -69,16 +69,12 @@ async fn main() -> Result<()> {
                 processor.run(rx).await;
             });
 
-            let end_block = match block_count {
-                Some(n) => Some(U64([start_block + n])),
-                None => None,
-            };
+            let end_block = block_count.map(|n| U64([start_block + n]));
 
             fetcher
                 .fetch(tx, Some(U64([start_block])), end_block)
                 .await?;
         }
-        _ => unreachable!(),
     }
 
     Ok(())
