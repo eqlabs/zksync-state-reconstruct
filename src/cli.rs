@@ -23,7 +23,7 @@ pub enum ReconstructSource {
     /// Fetch data from L1.
     L1 {
         #[command(flatten)]
-        args: L1FetcherOptions,
+        l1_fetcher_options: L1FetcherOptions,
     },
     /// Fetch data from a file.
     File {
@@ -39,7 +39,7 @@ pub enum Command {
     #[command(hide = true)]
     Download {
         #[command(flatten)]
-        args: L1FetcherOptions,
+        l1_fetcher_options: L1FetcherOptions,
         /// The path of the file to save the state to.
         file: String,
     },

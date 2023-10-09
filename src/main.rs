@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
 
             match source {
                 ReconstructSource::L1 {
-                    args:
+                    l1_fetcher_options:
                         L1FetcherOptions {
                             http_url,
                             start_block,
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Download {
-            args:
+            l1_fetcher_options:
                 L1FetcherOptions {
                     http_url,
                     start_block,
