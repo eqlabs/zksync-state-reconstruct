@@ -3,6 +3,8 @@ use std::vec::Vec;
 use ethers::{abi, types::U256};
 use eyre::Result;
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
+use serde_json_any_key::*;
 use thiserror::Error;
 
 #[allow(clippy::enum_variant_names)]
@@ -22,7 +24,7 @@ pub enum ParseError {
 }
 
 /// Data needed to commit new block
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CommitBlockInfoV1 {
     /// L2 block number.
     pub block_number: u64,
@@ -39,8 +41,10 @@ pub struct CommitBlockInfoV1 {
     /// Hash of all priority operations from this block.
     pub priority_operations_hash: Vec<u8>,
     /// Storage write access as a concatenation key-value.
+    #[serde(with = "any_key_map")]
     pub initial_storage_changes: IndexMap<[u8; 32], [u8; 32]>,
     /// Storage write access as a concatenation index-value.
+    #[serde(with = "any_key_map")]
     pub repeated_storage_changes: IndexMap<u64, [u8; 32]>,
     /// Concatenation of all L2 -> L1 logs in the block.
     pub l2_logs: Vec<u8>,

@@ -6,7 +6,10 @@ mod l1_fetcher;
 mod processor;
 mod types;
 
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 use clap::Parser;
 use cli::*;
@@ -17,15 +20,15 @@ use l1_fetcher::L1Fetcher;
 use tokio::sync::mpsc;
 
 use crate::{
-    processor::{tree::TreeProcessor, Processor},
+    processor::{json::JsonSerializationProcessor, tree::TreeProcessor, Processor},
     types::CommitBlockInfoV1,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
+    let cli = Cli::parse();
 
-    match args.subcommand {
+    match cli.subcommand {
         Command::Reconstruct { source, db_path } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
@@ -34,9 +37,13 @@ async fn main() -> Result<()> {
 
             match source {
                 ReconstructSource::L1 {
-                    http_url,
-                    start_block,
-                    block_step: _,
+                    l1_fetcher_options:
+                        L1FetcherOptions {
+                            http_url,
+                            start_block,
+                            block_step: _,
+                            block_count: _,
+                        },
                 } => {
                     let fetcher = L1Fetcher::new(&http_url)?;
                     let processor = TreeProcessor::new(db_path)?;
@@ -50,6 +57,30 @@ async fn main() -> Result<()> {
                 }
                 ReconstructSource::File { file: _ } => todo!(),
             }
+        }
+        Command::Download {
+            l1_fetcher_options:
+                L1FetcherOptions {
+                    http_url,
+                    start_block,
+                    block_step: _,
+                    block_count,
+                },
+            file,
+        } => {
+            let fetcher = L1Fetcher::new(&http_url)?;
+            let processor = JsonSerializationProcessor::new(Path::new(&file))?;
+            let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+
+            tokio::spawn(async move {
+                processor.run(rx).await;
+            });
+
+            let end_block = block_count.map(|n| U64([start_block + n]));
+
+            fetcher
+                .fetch(tx, Some(U64([start_block])), end_block)
+                .await?;
         }
     }
 
