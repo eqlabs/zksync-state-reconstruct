@@ -1,13 +1,13 @@
+use std::{fs::File, path::Path};
+
 use async_trait::async_trait;
 use eyre::Result;
 use serde::ser::{SerializeSeq, Serializer};
 use serde_json;
-use std::{fs::File, path::Path};
 use tokio::sync::mpsc;
 
-use crate::types::CommitBlockInfoV1;
-
 use super::Processor;
+use crate::types::CommitBlockInfoV1;
 
 pub struct JsonSerializationProcessor {
     serializer: serde_json::Serializer<File>,
