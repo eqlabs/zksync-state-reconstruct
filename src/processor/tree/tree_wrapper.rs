@@ -17,8 +17,8 @@ pub struct TreeWrapper<'a> {
 
 impl TreeWrapper<'static> {
     /// Attempts to create a new [`TreeWrapper`].
-    pub fn new(db_dir: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
-        let db = RocksDBWrapper::new(db_dir);
+    pub fn new(db_path: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
+        let db = RocksDBWrapper::new(db_path);
         let mut tree = MerkleTree::new(db);
 
         // If an existing `index_to_key` mapping was supplied, use that.

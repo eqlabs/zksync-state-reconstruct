@@ -13,7 +13,9 @@ pub mod storage {
     /// The path to the initial state file.
     pub const INITAL_STATE_PATH: &str = "InitialState.csv";
 
-    // TODO: Configure via env / CLI.
-    /// The path of the state file.
-    pub const STATE_FILE_PATH: &str = "StateSnapshot.json";
+    /// The default name of the database.
+    pub const DEFAULT_DB_NAME: &str = "db";
+
+    /// The name of the state file.
+    pub const STATE_FILE_NAME: &str = "StateSnapshot.json";
 }
