@@ -10,10 +10,10 @@ pub enum ReconstructSource {
         #[arg(long)]
         http_url: String,
         /// Ethereum block number to start state import from.
-        #[arg(short, long, default_value_t=ethereum::GENESIS_BLOCK)]
+        #[arg(short, long, default_value_t = ethereum::GENESIS_BLOCK)]
         start_block: u64,
         /// The number of blocks to filter & process in one step over.
-        #[arg(short, long, default_value_t=ethereum::BLOCK_STEP)]
+        #[arg(short, long, default_value_t = ethereum::BLOCK_STEP)]
         block_step: u64,
     },
     /// Fetch data from a file.
@@ -25,15 +25,21 @@ pub enum ReconstructSource {
 }
 
 #[derive(Subcommand)]
-pub enum Commands {
+pub enum Command {
     /// Reconstruct L2 state from a source.
-    #[command(subcommand)]
-    Reconstruct(ReconstructSource),
+    Reconstruct {
+        /// The source to fetch data from.
+        #[command(subcommand)]
+        source: ReconstructSource,
+        /// The path to the storage solution.
+        #[arg(short, long, env = "ZK_SYNC_DB_PATH")]
+        db_path: Option<String>,
+    },
 }
 
 #[derive(Parser)]
 #[command(author, version, about = "zkSync state reconstruction tool")]
 pub struct Args {
     #[command(subcommand)]
-    pub subcommand: Commands,
+    pub subcommand: Command,
 }
