@@ -69,6 +69,10 @@ impl TreeWrapper<'static> {
 
         root_hash
     }
+
+    pub fn latest_root_hash(&self) -> RootHash {
+        self.tree.latest_root_hash()
+    }
 }
 
 /// Attempts to reconstruct the genesis state from a CSV file.

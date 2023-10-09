@@ -82,6 +82,27 @@ async fn main() -> Result<()> {
                 .fetch(tx, Some(U64([start_block])), end_block)
                 .await?;
         }
+        Command::Query {
+            query,
+            json,
+            db_path,
+        } => {
+            let db_path = match db_path {
+                Some(path) => PathBuf::from(path),
+                None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
+            };
+
+            let processor = TreeProcessor::new(db_path)?;
+            let result = match query {
+                Query::RootHash => processor.tree.latest_root_hash(),
+            };
+
+            if json {
+                println!("{}", serde_json::to_string(&result)?);
+            } else {
+                println!("{}", result);
+            }
+        }
     }
 
     Ok(())
