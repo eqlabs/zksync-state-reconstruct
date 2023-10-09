@@ -26,9 +26,9 @@ use crate::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let args = Args::parse();
+    let cli = Cli::parse();
 
-    match args.subcommand {
+    match cli.subcommand {
         Command::Reconstruct { source, db_path } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
@@ -37,9 +37,13 @@ async fn main() -> Result<()> {
 
             match source {
                 ReconstructSource::L1 {
-                    http_url,
-                    start_block,
-                    block_step: _,
+                    args:
+                        L1FetcherOptions {
+                            http_url,
+                            start_block,
+                            block_step: _,
+                            block_count: _,
+                        },
                 } => {
                     let fetcher = L1Fetcher::new(&http_url)?;
                     let processor = TreeProcessor::new(db_path)?;
@@ -55,10 +59,13 @@ async fn main() -> Result<()> {
             }
         }
         Command::Download {
-            http_url,
-            start_block,
-            block_step: _,
-            block_count,
+            args:
+                L1FetcherOptions {
+                    http_url,
+                    start_block,
+                    block_step: _,
+                    block_count,
+                },
             file,
         } => {
             let fetcher = L1Fetcher::new(&http_url)?;
