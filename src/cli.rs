@@ -25,7 +25,7 @@ pub enum ReconstructSource {
 }
 
 #[derive(Subcommand)]
-pub enum Commands {
+pub enum Command {
     /// Download L2 state from L1 to JSON file.
     #[command(hide = true)]
     Download {
@@ -60,5 +60,5 @@ pub enum Commands {
 #[command(author, version, about = "zkSync state reconstruction tool")]
 pub struct Args {
     #[command(subcommand)]
-    pub subcommand: Commands,
+    pub subcommand: Command,
 }

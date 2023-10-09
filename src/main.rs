@@ -29,7 +29,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     match args.subcommand {
-        Commands::Reconstruct { source, db_path } => {
+        Command::Reconstruct { source, db_path } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
                 ReconstructSource::File { file: _ } => todo!(),
             }
         }
-        Commands::Download {
+        Command::Download {
             http_url,
             start_block,
             block_step: _,
