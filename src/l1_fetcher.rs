@@ -70,8 +70,7 @@ impl L1Fetcher {
                         }
                         Err(e) => {
                             println!(
-                                "attempt {}: failed to get transaction for hash {}: {}",
-                                attempt, hash, e
+                                "attempt {attempt}: failed to get transaction for hash {hash}: {e}"
                             );
 
                             sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
@@ -93,7 +92,7 @@ impl L1Fetcher {
                 let blocks = match parse_calldata(&function, &calldata) {
                     Ok(blks) => blks,
                     Err(e) => {
-                        println!("failed to parse calldata: {}", e);
+                        println!("failed to parse calldata: {e}");
                         continue;
                     }
                 };
@@ -198,10 +197,10 @@ fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> 
         .into());
     };
 
-    for data in data.iter() {
-        match CommitBlockInfoV1::try_from(data) {
+    for d in data {
+        match CommitBlockInfoV1::try_from(d) {
             Ok(blk) => res.push(blk),
-            Err(e) => println!("failed to parse commit block info: {}", e),
+            Err(e) => println!("failed to parse commit block info: {e}"),
         }
     }
 
