@@ -12,7 +12,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli::*;
+use cli::{Cli, Command, L1FetcherOptions, Query, ReconstructSource};
 use constants::storage;
 use ethers::types::U64;
 use eyre::Result;
@@ -100,7 +100,7 @@ async fn main() -> Result<()> {
             if json {
                 println!("{}", serde_json::to_string(&result)?);
             } else {
-                println!("{}", result);
+                println!("{result}");
             }
         }
     }

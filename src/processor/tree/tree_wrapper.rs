@@ -49,7 +49,7 @@ impl TreeWrapper<'static> {
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
-            let index = *index as usize;
+            let index = usize::try_from(*index).expect("truncation failed");
             // Index is 1-based so we subtract 1.
             let key = *self.index_to_key_map.get_index(index - 1).unwrap();
             let value = H256::from(value);
