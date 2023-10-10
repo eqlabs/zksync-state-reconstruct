@@ -4,7 +4,7 @@ use ethers::{abi, types::U256};
 use eyre::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json_any_key::*;
+use serde_json_any_key::any_key_map;
 use thiserror::Error;
 
 #[allow(clippy::enum_variant_names)]
@@ -55,15 +55,135 @@ pub struct CommitBlockInfoV1 {
 impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into CommitBlockInfoV1.
+    /// Try to parse Ethereum ABI token into [`CommitBlockInfoV1`].
     ///
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
+        let ExtractedToken {
+            new_l2_block_number,
+            timestamp,
+            new_enumeration_index,
+            state_root,
+            number_of_l1_txs,
+            l2_logs_tree_root,
+            priority_operations_hash,
+            initial_changes_calldata,
+            repeated_changes_calldata,
+            l2_logs,
+            factory_deps,
+        } = token.try_into()?;
+        let new_enumeration_index = new_enumeration_index.0[0];
+
+        let mut smartcontracts = vec![];
+        for bytecode in &factory_deps {
+            let abi::Token::Bytes(bytecode) = bytecode else {
+                return Err(ParseError::InvalidCommitBlockInfo(
+                    "factoryDeps".to_string(),
+                ));
+            };
+
+            match decompress_bytecode(bytecode) {
+                Ok(bytecode) => smartcontracts.push(bytecode),
+                Err(e) => println!("failed to decompress bytecode: {e}"),
+            };
+        }
+
+        assert_eq!(repeated_changes_calldata.len() % 40, 4);
+
+        println!(
+            "Have {} new keys",
+            (initial_changes_calldata.len() - 4) / 64
+        );
+        println!(
+            "Have {} repeated keys",
+            (repeated_changes_calldata.len() - 4) / 40
+        );
+
+        let mut blk = CommitBlockInfoV1 {
+            block_number: new_l2_block_number.as_u64(),
+            timestamp: timestamp.as_u64(),
+            index_repeated_storage_changes: new_enumeration_index,
+            new_state_root: state_root,
+            number_of_l1_txs,
+            l2_logs_tree_root,
+            priority_operations_hash,
+            initial_storage_changes: IndexMap::default(),
+            repeated_storage_changes: IndexMap::default(),
+            l2_logs: l2_logs.clone(),
+            factory_deps: smartcontracts,
+        };
+
+        for initial_calldata in initial_changes_calldata[4..].chunks(64) {
+            let mut t = initial_calldata.array_chunks::<32>();
+            let key = *t.next().ok_or_else(|| {
+                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
+            })?;
+            let value = *t.next().ok_or_else(|| {
+                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
+            })?;
+
+            if t.next().is_some() {
+                return Err(ParseError::InvalidCommitBlockInfo(
+                    "initialStorageChanges".to_string(),
+                ));
+            }
+
+            let _ = blk.initial_storage_changes.insert(key, value);
+        }
+
+        for repeated_calldata in repeated_changes_calldata[4..].chunks(40) {
+            let index = u64::from_be_bytes([
+                repeated_calldata[0],
+                repeated_calldata[1],
+                repeated_calldata[2],
+                repeated_calldata[3],
+                repeated_calldata[4],
+                repeated_calldata[5],
+                repeated_calldata[6],
+                repeated_calldata[7],
+            ]);
+            let mut t = repeated_calldata[8..].array_chunks::<32>();
+            let value = *t.next().ok_or_else(|| {
+                ParseError::InvalidCommitBlockInfo("repeatedStorageChanges".to_string())
+            })?;
+
+            if t.next().is_some() {
+                return Err(ParseError::InvalidCommitBlockInfo(
+                    "repeatedStorageChanges".to_string(),
+                ));
+            }
+
+            blk.repeated_storage_changes.insert(index, value);
+        }
+
+        Ok(blk)
+    }
+}
+
+struct ExtractedToken {
+    new_l2_block_number: U256,
+    timestamp: U256,
+    new_enumeration_index: U256,
+    state_root: Vec<u8>,
+    number_of_l1_txs: U256,
+    l2_logs_tree_root: Vec<u8>,
+    priority_operations_hash: Vec<u8>,
+    initial_changes_calldata: Vec<u8>,
+    repeated_changes_calldata: Vec<u8>,
+    l2_logs: Vec<u8>,
+    factory_deps: Vec<abi::Token>,
+}
+
+impl TryFrom<&abi::Token> for ExtractedToken {
+    type Error = ParseError;
+
+    fn try_from(token: &abi::Token) -> std::result::Result<Self, Self::Error> {
         let abi::Token::Tuple(block_elems) = token else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "struct elements".to_string(),
             ));
         };
+
         let abi::Token::Uint(new_l2_block_number) = block_elems[0].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "blockNumber".to_string(),
@@ -86,7 +206,6 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
                 "indexRepeatedStorageChanges".to_string(),
             ));
         };
-        let new_enumeration_index = new_enumeration_index.0[0];
 
         let abi::Token::FixedBytes(state_root) = block_elems[3].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
@@ -150,93 +269,23 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             ));
         };
 
-        let mut smartcontracts = vec![];
-        for bytecode in factory_deps.into_iter() {
-            let abi::Token::Bytes(bytecode) = bytecode else {
-                return Err(ParseError::InvalidCommitBlockInfo(
-                    "factoryDeps".to_string(),
-                ));
-            };
-
-            match decompress_bytecode(bytecode) {
-                Ok(bytecode) => smartcontracts.push(bytecode),
-                Err(e) => println!("failed to decompress bytecode: {}", e),
-            };
-        }
-
-        assert_eq!(repeated_changes_calldata.len() % 40, 4);
-
-        println!(
-            "Have {} new keys",
-            (initial_changes_calldata.len() - 4) / 64
-        );
-        println!(
-            "Have {} repeated keys",
-            (repeated_changes_calldata.len() - 4) / 40
-        );
-
-        let mut blk = CommitBlockInfoV1 {
-            block_number: new_l2_block_number.as_u64(),
-            timestamp: timestamp.as_u64(),
-            index_repeated_storage_changes: new_enumeration_index,
-            new_state_root: state_root,
+        Ok(Self {
+            new_l2_block_number,
+            timestamp,
+            new_enumeration_index,
+            state_root,
             number_of_l1_txs,
             l2_logs_tree_root,
             priority_operations_hash,
-            initial_storage_changes: IndexMap::default(),
-            repeated_storage_changes: IndexMap::default(),
-            l2_logs: l2_logs.to_vec(),
-            factory_deps: smartcontracts,
-        };
-
-        for initial_calldata in initial_changes_calldata[4..].chunks(64) {
-            let mut t = initial_calldata.array_chunks::<32>();
-            let key = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
-            })?;
-            let value = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
-            })?;
-
-            if t.next().is_some() {
-                return Err(ParseError::InvalidCommitBlockInfo(
-                    "initialStorageChanges".to_string(),
-                ));
-            }
-
-            let _ = blk.initial_storage_changes.insert(key, value);
-        }
-
-        for repeated_calldata in repeated_changes_calldata[4..].chunks(40) {
-            let index = u64::from_be_bytes([
-                repeated_calldata[0],
-                repeated_calldata[1],
-                repeated_calldata[2],
-                repeated_calldata[3],
-                repeated_calldata[4],
-                repeated_calldata[5],
-                repeated_calldata[6],
-                repeated_calldata[7],
-            ]);
-            let mut t = repeated_calldata[8..].array_chunks::<32>();
-            let value = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("repeatedStorageChanges".to_string())
-            })?;
-
-            if t.next().is_some() {
-                return Err(ParseError::InvalidCommitBlockInfo(
-                    "repeatedStorageChanges".to_string(),
-                ));
-            }
-
-            blk.repeated_storage_changes.insert(index, value);
-        }
-
-        Ok(blk)
+            initial_changes_calldata,
+            repeated_changes_calldata,
+            l2_logs,
+            factory_deps,
+        })
     }
 }
 
-pub fn decompress_bytecode(data: Vec<u8>) -> Result<Vec<u8>> {
+fn decompress_bytecode(data: &[u8]) -> Result<Vec<u8>> {
     let dict_len = u16::from_be_bytes([data[0], data[1]]);
     let end = 2 + dict_len as usize * 8;
     let dict = data[2..end].to_vec();
@@ -312,7 +361,7 @@ impl CommitBlockInfoV1 {
             index_repeated_storage_changes: self.index_repeated_storage_changes,
             new_state_root: self.new_state_root.clone(),
             number_of_l1_txs: self.number_of_l1_txs,
-            priority_operations_hash: self.priority_operations_hash.to_vec(),
+            priority_operations_hash: self.priority_operations_hash.clone(),
             system_logs: vec![],
             total_l2_to_l1_pubdata: vec![],
         }
