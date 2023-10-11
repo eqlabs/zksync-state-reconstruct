@@ -33,7 +33,7 @@ impl L1Fetcher {
 
     pub async fn fetch(
         &self,
-        sink: mpsc::Sender<Vec<CommitBlockInfoV1>>,
+        sink: mpsc::Sender<CommitBlockInfoV1>,
         start_block: Option<U64>,
         end_block: Option<U64>,
     ) -> Result<()> {
@@ -97,7 +97,9 @@ impl L1Fetcher {
                     }
                 };
 
-                sink.send(blocks).await.unwrap();
+                for blk in blocks {
+                    sink.send(blk).await.unwrap();
+                }
             }
         });
 

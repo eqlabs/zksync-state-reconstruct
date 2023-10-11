@@ -1,13 +1,17 @@
 #![feature(array_chunks)]
+#![feature(iter_next_chunk)]
 
 mod cli;
 mod constants;
 mod l1_fetcher;
 mod processor;
 mod types;
+mod util;
 
 use std::{
     env,
+    fs::File,
+    io::BufReader,
     path::{Path, PathBuf},
 };
 
@@ -26,6 +30,7 @@ use crate::{
         Processor,
     },
     types::CommitBlockInfoV1,
+    util::json,
 };
 
 #[tokio::main]
@@ -51,7 +56,7 @@ async fn main() -> Result<()> {
                 } => {
                     let fetcher = L1Fetcher::new(&http_url)?;
                     let processor = TreeProcessor::new(db_path)?;
-                    let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+                    let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
                     tokio::spawn(async move {
                         processor.run(rx).await;
@@ -59,7 +64,24 @@ async fn main() -> Result<()> {
 
                     fetcher.fetch(tx, Some(U64([start_block])), None).await?;
                 }
-                ReconstructSource::File { file: _ } => todo!(),
+                ReconstructSource::File { file } => {
+                    let reader = BufReader::new(File::open(&file)?);
+                    let processor = TreeProcessor::new(db_path)?;
+                    let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+
+                    tokio::spawn(async move {
+                        processor.run(rx).await;
+                    });
+
+                    let json_iter = json::iter_json_array::<CommitBlockInfoV1, _>(reader);
+                    let mut num_objects = 0;
+                    for blk in json_iter {
+                        tx.send(blk.expect("parsing")).await?;
+                        num_objects += 1;
+                    }
+
+                    println!("{num_objects} objects imported from {file}");
+                }
             }
         }
         Command::Download {
@@ -74,7 +96,7 @@ async fn main() -> Result<()> {
         } => {
             let fetcher = L1Fetcher::new(&http_url)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
-            let (tx, rx) = mpsc::channel::<Vec<CommitBlockInfoV1>>(5);
+            let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
             tokio::spawn(async move {
                 processor.run(rx).await;
