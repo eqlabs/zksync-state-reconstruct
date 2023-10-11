@@ -3,10 +3,10 @@
 
 mod cli;
 mod constants;
-mod json;
 mod l1_fetcher;
 mod processor;
 mod types;
+mod util;
 
 use std::{
     env,
@@ -26,6 +26,7 @@ use tokio::sync::mpsc;
 use crate::{
     processor::{json::JsonSerializationProcessor, tree::TreeProcessor, Processor},
     types::CommitBlockInfoV1,
+    util::json,
 };
 
 #[tokio::main]
