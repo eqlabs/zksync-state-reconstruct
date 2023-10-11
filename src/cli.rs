@@ -28,7 +28,6 @@ pub enum ReconstructSource {
     /// Fetch data from a file.
     File {
         /// The path of the file to import state from.
-        #[arg(short, long)]
         file: String,
     },
 }

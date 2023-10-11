@@ -53,28 +53,26 @@ impl TreeProcessor<'static> {
 
 #[async_trait]
 impl Processor for TreeProcessor<'static> {
-    async fn run(mut self, mut rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>) {
-        while let Some(blocks) = rx.recv().await {
-            for block in blocks {
-                // Check if we've already processed this block.
-                if self.snapshot.latest_l2_block_number >= block.block_number {
-                    println!(
-                        "Block {} has already been processed, skipping.",
-                        block.block_number
-                    );
-                    continue;
-                }
-
-                self.tree.insert_block(&block);
-
-                // Update snapshot values.
-                self.snapshot.latest_l2_block_number = block.block_number;
-                self.snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
+    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
+        while let Some(block) = rx.recv().await {
+            // Check if we've already processed this block.
+            if self.snapshot.latest_l2_block_number >= block.block_number {
+                println!(
+                    "Block {} has already been processed, skipping.",
+                    block.block_number
+                );
+                continue;
             }
 
-            // Write the current state to a file.
-            let state_file_path = self.db_path.join(STATE_FILE_NAME);
-            self.snapshot.write(&state_file_path).unwrap();
+            self.tree.insert_block(&block);
+
+            // Update snapshot values.
+            self.snapshot.latest_l2_block_number = block.block_number;
+            self.snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
         }
+
+        // Write the current state to a file.
+        let state_file_path = self.db_path.join(STATE_FILE_NAME);
+        self.snapshot.write(&state_file_path).unwrap();
     }
 }

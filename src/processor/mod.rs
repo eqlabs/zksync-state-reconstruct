@@ -8,5 +8,5 @@ pub mod tree;
 
 #[async_trait]
 pub trait Processor {
-    async fn run(self, rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>);
+    async fn run(self, rx: mpsc::Receiver<CommitBlockInfoV1>);
 }

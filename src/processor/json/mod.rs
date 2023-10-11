@@ -23,15 +23,13 @@ impl JsonSerializationProcessor {
 
 #[async_trait]
 impl Processor for JsonSerializationProcessor {
-    async fn run(mut self, mut rx: mpsc::Receiver<Vec<CommitBlockInfoV1>>) {
+    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
         let mut seq = self
             .serializer
             .serialize_seq(None)
             .expect("serializer construction failed");
-        while let Some(blocks) = rx.recv().await {
-            for block in blocks {
-                seq.serialize_element(&block).expect("block serialization");
-            }
+        while let Some(block) = rx.recv().await {
+            seq.serialize_element(&block).expect("block serialization");
         }
         seq.end().expect("JSON array closing");
     }
