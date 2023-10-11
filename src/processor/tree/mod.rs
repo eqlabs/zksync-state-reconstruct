@@ -1,9 +1,11 @@
+pub mod query_tree;
 mod snapshot;
 mod tree_wrapper;
 
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use ethers::types::H256;
 use eyre::Result;
 use tokio::sync::mpsc;
 
@@ -11,11 +13,13 @@ use self::{snapshot::StateSnapshot, tree_wrapper::TreeWrapper};
 use super::Processor;
 use crate::{constants::storage::STATE_FILE_NAME, types::CommitBlockInfoV1};
 
+pub type RootHash = H256;
+
 pub struct TreeProcessor<'a> {
     /// The path to the directory in which database files and state snapshots will be written.
     db_path: PathBuf,
     /// The internal merkle tree.
-    pub tree: TreeWrapper<'a>,
+    tree: TreeWrapper<'a>,
     /// The stored state snapshot.
     snapshot: StateSnapshot,
 }

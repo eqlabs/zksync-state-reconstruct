@@ -20,7 +20,11 @@ use l1_fetcher::L1Fetcher;
 use tokio::sync::mpsc;
 
 use crate::{
-    processor::{json::JsonSerializationProcessor, tree::TreeProcessor, Processor},
+    processor::{
+        json::JsonSerializationProcessor,
+        tree::{query_tree::QueryTree, TreeProcessor},
+        Processor,
+    },
     types::CommitBlockInfoV1,
 };
 
@@ -92,9 +96,9 @@ async fn main() -> Result<()> {
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
 
-            let processor = TreeProcessor::new(db_path)?;
+            let tree = QueryTree::new(&db_path);
             let result = match query {
-                Query::RootHash => processor.tree.latest_root_hash(),
+                Query::RootHash => tree.latest_root_hash(),
             };
 
             if json {

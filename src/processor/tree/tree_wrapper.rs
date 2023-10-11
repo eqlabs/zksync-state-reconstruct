@@ -6,9 +6,8 @@ use indexmap::IndexSet;
 use zk_evm::aux_structures::LogQuery;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
+use super::RootHash;
 use crate::{constants::storage::INITAL_STATE_PATH, CommitBlockInfoV1};
-
-pub type RootHash = H256;
 
 pub struct TreeWrapper<'a> {
     tree: MerkleTree<'a, RocksDBWrapper>,
@@ -68,10 +67,6 @@ impl TreeWrapper<'static> {
         );
 
         root_hash
-    }
-
-    pub fn latest_root_hash(&self) -> RootHash {
-        self.tree.latest_root_hash()
     }
 }
 
