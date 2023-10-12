@@ -73,10 +73,10 @@ impl Processor for TreeProcessor<'static> {
             // Update snapshot values.
             self.snapshot.latest_l2_block_number = block.block_number;
             self.snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
-        }
 
-        // Write the current state to a file.
-        let state_file_path = self.db_path.join(STATE_FILE_NAME);
-        self.snapshot.write(&state_file_path).unwrap();
+            // Write the current state to a file.
+            let state_file_path = self.db_path.join(STATE_FILE_NAME);
+            self.snapshot.write(&state_file_path).unwrap();
+        }
     }
 }
