@@ -1,5 +1,7 @@
 #![feature(array_chunks)]
 #![feature(iter_next_chunk)]
+#![warn(clippy::pedantic)]
+#![allow(clippy::module_name_repetitions)]
 
 mod cli;
 mod constants;
@@ -22,6 +24,7 @@ use ethers::types::U64;
 use eyre::Result;
 use l1_fetcher::L1Fetcher;
 use tokio::sync::mpsc;
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 use crate::{
     processor::{
@@ -33,8 +36,27 @@ use crate::{
     util::json,
 };
 
+fn start_logger(default_level: LevelFilter) {
+    let filter = match EnvFilter::try_from_default_env() {
+        Ok(filter) => filter
+            .add_directive("hyper=off".parse().unwrap())
+            .add_directive("ethers=off".parse().unwrap()),
+        _ => EnvFilter::default()
+            .add_directive(default_level.into())
+            .add_directive("hyper=off".parse().unwrap())
+            .add_directive("ethers=off".parse().unwrap()),
+    };
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    start_logger(LevelFilter::INFO);
+
     let cli = Cli::parse();
 
     match cli.subcommand {
