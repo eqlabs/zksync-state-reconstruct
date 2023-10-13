@@ -19,6 +19,7 @@ pub enum ParseError {
     #[error("invalid CommitBlockInfo: {0}")]
     InvalidCommitBlockInfo(String),
 
+    #[allow(dead_code)]
     #[error("invalid compressed bytecode: {0}")]
     InvalidCompressedByteCode(String),
 }
@@ -82,10 +83,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
                 ));
             };
 
-            match decompress_bytecode(bytecode) {
-                Ok(bytecode) => smartcontracts.push(bytecode),
-                Err(e) => println!("failed to decompress bytecode: {e}"),
-            };
+            smartcontracts.push(bytecode.clone());
         }
 
         assert_eq!(repeated_changes_calldata.len() % 40, 4);
@@ -285,6 +283,7 @@ impl TryFrom<&abi::Token> for ExtractedToken {
     }
 }
 
+#[allow(dead_code)]
 fn decompress_bytecode(data: &[u8]) -> Result<Vec<u8>> {
     let dict_len = u16::from_be_bytes([data[0], data[1]]);
     let end = 2 + dict_len as usize * 8;
