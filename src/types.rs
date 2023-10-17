@@ -88,11 +88,11 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
 
         assert_eq!(repeated_changes_calldata.len() % 40, 4);
 
-        println!(
+        tracing::trace!(
             "Have {} new keys",
             (initial_changes_calldata.len() - 4) / 64
         );
-        println!(
+        tracing::trace!(
             "Have {} repeated keys",
             (repeated_changes_calldata.len() - 4) / 40
         );

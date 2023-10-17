@@ -61,7 +61,7 @@ impl Processor for TreeProcessor<'static> {
         while let Some(block) = rx.recv().await {
             // Check if we've already processed this block.
             if self.snapshot.latest_l2_block_number >= block.block_number {
-                println!(
+                tracing::info!(
                     "Block {} has already been processed, skipping.",
                     block.block_number
                 );

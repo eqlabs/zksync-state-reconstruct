@@ -23,7 +23,6 @@ impl TreeWrapper<'static> {
         // If an existing `index_to_key` mapping was supplied, use that.
         // Otherwise, reconstruct the genesis state.
         if index_to_key_map.is_empty() {
-            println!("was empty!");
             reconstruct_genesis_state(&mut tree, &mut index_to_key_map, INITAL_STATE_PATH)?;
         }
 
@@ -60,11 +59,13 @@ impl TreeWrapper<'static> {
         let root_hash = output.root_hash;
 
         assert_eq!(root_hash.as_bytes(), block.new_state_root);
-        println!(
+        tracing::debug!(
             "Root hash of block {} = {}",
             block.block_number,
             hex::encode(root_hash)
         );
+
+        println!("Successfully processed block {}", block.block_number);
 
         root_hash
     }
@@ -145,7 +146,7 @@ fn reconstruct_genesis_state<D: Database>(
     // Finalize.
     batched.push((previous.0, previous.1, previous.2));
 
-    println!("Have {} unique keys in the tree", key_set.len());
+    tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
     let mut key_value_pairs: Vec<(U256, H256)> = Vec::with_capacity(batched.len());
     for (address, key, value) in batched {
@@ -170,8 +171,7 @@ fn reconstruct_genesis_state<D: Database>(
     }
 
     let output = tree.extend(key_value_pairs);
-    dbg!(tree.latest_version());
-    println!("Initial state root = {}", hex::encode(output.root_hash));
+    tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())
 }
