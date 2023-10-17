@@ -1,12 +1,14 @@
 use std::{fs, io, path::Path};
 
-use ethers::types::U256;
+use ethers::types::{U256, U64};
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 
 /// Struct containing the fields used for restoring the tree state.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct StateSnapshot {
+    /// The latest l1 block number that was processed.
+    pub latest_l1_block_number: U64,
     /// The latest l2 block number that was processed.
     pub latest_l2_block_number: u64,
     /// The mappings of index to key values.
