@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ethers::{
     abi::{Contract, Function},
     prelude::*,
@@ -6,29 +8,35 @@ use ethers::{
 use eyre::Result;
 use rand::random;
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, Mutex},
     time::{sleep, Duration},
 };
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    snapshot::StateSnapshot,
     types::{CommitBlockInfoV1, ParseError},
 };
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
     contract: Contract,
+    snapshot: Option<Arc<Mutex<StateSnapshot>>>,
 }
 
 impl L1Fetcher {
-    pub fn new(http_url: &str) -> Result<Self> {
+    pub fn new(http_url: &str, snapshot: Option<Arc<Mutex<StateSnapshot>>>) -> Result<Self> {
         let provider =
             Provider::<Http>::try_from(http_url).expect("could not instantiate HTTP Provider");
 
         let abi_file = std::fs::File::open("./IZkSync.json")?;
         let contract = Contract::load(abi_file)?;
 
-        Ok(L1Fetcher { provider, contract })
+        Ok(L1Fetcher {
+            provider,
+            contract,
+            snapshot,
+        })
     }
 
     pub async fn fetch(
@@ -37,7 +45,24 @@ impl L1Fetcher {
         start_block: Option<U64>,
         end_block: Option<U64>,
     ) -> Result<()> {
+        // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
+        // in which case, start from that instead. If no argument was supplied and a state snapshot
+        // exists, start from the block number specified in that snapshot.
         let mut current_l1_block_number = start_block.unwrap_or(GENESIS_BLOCK.into());
+        // User might have supplied their own start block, in that case we shouldn't enforce the
+        // use of the snapshot value.
+        if current_l1_block_number == GENESIS_BLOCK.into() {
+            if let Some(snapshot) = &self.snapshot {
+                let snapshot = snapshot.lock().await;
+                if snapshot.latest_l1_block_number > current_l1_block_number {
+                    current_l1_block_number = snapshot.latest_l1_block_number;
+                    tracing::info!(
+                        "Found snapshot, starting from L1 block {current_l1_block_number}"
+                    );
+                }
+            };
+        }
+
         let end_block_number = end_block.unwrap_or(
             self.provider
                 .get_block(BlockNumber::Latest)
@@ -131,6 +156,11 @@ impl L1Fetcher {
                 }
 
                 latest_l2_block_number = new_l2_block_number;
+            }
+
+            // Store our current L1 block number so we can resume if the process exits.
+            if let Some(snapshot) = &self.snapshot {
+                snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
             }
 
             // Increment current block index.

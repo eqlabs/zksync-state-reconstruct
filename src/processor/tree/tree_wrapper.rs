@@ -65,7 +65,7 @@ impl TreeWrapper<'static> {
             hex::encode(root_hash)
         );
 
-        println!("Successfully processed block {}", block.block_number);
+        tracing::info!("Successfully processed block {}", block.block_number);
 
         root_hash
     }

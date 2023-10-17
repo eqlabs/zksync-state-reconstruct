@@ -7,6 +7,7 @@ mod cli;
 mod constants;
 mod l1_fetcher;
 mod processor;
+mod snapshot;
 mod types;
 mod util;
 
@@ -15,6 +16,7 @@ use std::{
     fs::File,
     io::BufReader,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use clap::Parser;
@@ -22,11 +24,12 @@ use cli::{Cli, Command, L1FetcherOptions, Query, ReconstructSource};
 use constants::storage;
 use ethers::types::U64;
 use eyre::Result;
-use l1_fetcher::L1Fetcher;
-use tokio::sync::mpsc;
+use snapshot::StateSnapshot;
+use tokio::sync::{mpsc, Mutex};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 use crate::{
+    l1_fetcher::L1Fetcher,
     processor::{
         json::JsonSerializationProcessor,
         tree::{query_tree::QueryTree, TreeProcessor},
@@ -76,8 +79,10 @@ async fn main() -> Result<()> {
                             block_count: _,
                         },
                 } => {
-                    let fetcher = L1Fetcher::new(&http_url)?;
-                    let processor = TreeProcessor::new(db_path)?;
+                    let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));
+
+                    let fetcher = L1Fetcher::new(&http_url, Some(snapshot.clone()))?;
+                    let processor = TreeProcessor::new(db_path, snapshot.clone()).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
                     tokio::spawn(async move {
@@ -87,8 +92,10 @@ async fn main() -> Result<()> {
                     fetcher.fetch(tx, Some(U64([start_block])), None).await?;
                 }
                 ReconstructSource::File { file } => {
+                    let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));
+
                     let reader = BufReader::new(File::open(&file)?);
-                    let processor = TreeProcessor::new(db_path)?;
+                    let processor = TreeProcessor::new(db_path, snapshot).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
                     tokio::spawn(async move {
@@ -102,7 +109,7 @@ async fn main() -> Result<()> {
                         num_objects += 1;
                     }
 
-                    println!("{num_objects} objects imported from {file}");
+                    tracing::info!("{num_objects} objects imported from {file}");
                 }
             }
         }
@@ -116,7 +123,7 @@ async fn main() -> Result<()> {
                 },
             file,
         } => {
-            let fetcher = L1Fetcher::new(&http_url)?;
+            let fetcher = L1Fetcher::new(&http_url, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
