@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -7,6 +7,7 @@ use ethers::{
 };
 use eyre::Result;
 use rand::random;
+use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
     time::{sleep, Duration},
@@ -17,6 +18,18 @@ use crate::{
     snapshot::StateSnapshot,
     types::{CommitBlockInfoV1, ParseError},
 };
+
+/// MAX_RETRIES is the maximum number of retries on failed L1 call.
+const MAX_RETRIES: u8 = 5;
+
+#[derive(Error, Debug)]
+pub struct L1GetLogsError;
+
+impl fmt::Display for L1GetLogsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "failed to get logs")
+    }
+}
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
@@ -87,7 +100,7 @@ impl L1Fetcher {
             while let Some(hash) = hash_rx.recv().await {
                 let mut tx: Option<_> = None;
 
-                'retry: for attempt in 1..6 {
+                'retry: for attempt in 1..MAX_RETRIES + 1 {
                     match provider.get_transaction(hash).await {
                         Ok(x) => {
                             tx = x;
@@ -139,22 +152,7 @@ impl L1Fetcher {
                 .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
-            let mut resp: Option<_> = None;
-            'retry: for attempt in 1..6 {
-                match self.provider.get_logs(&filter).await {
-                    Ok(x) => {
-                        resp = Some(x);
-                        break 'retry;
-                    }
-                    Err(e) => {
-                        tracing::error!("attempt {attempt}: failed to get logs: {e}");
-
-                        sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
-                    }
-                };
-            }
-
-            let logs = resp.expect("get_logs(filter)");
+            let logs = self.get_logs(&filter).await?;
             for log in logs {
                 // log.topics:
                 // topics[1]: L2 block number.
@@ -183,6 +181,22 @@ impl L1Fetcher {
         }
 
         Ok(())
+    }
+
+    async fn get_logs(&self, filter: &Filter) -> Result<Vec<Log>> {
+        for attempt in 1..MAX_RETRIES + 1 {
+            match self.provider.get_logs(&filter).await {
+                Ok(x) => return Ok(x),
+
+                Err(e) => {
+                    tracing::error!("attempt {attempt}: failed to get logs: {e}");
+
+                    sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
+                }
+            }
+        }
+
+        Err(L1GetLogsError {}.into())
     }
 }
 
