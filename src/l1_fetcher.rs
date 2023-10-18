@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::Future, ops::Fn, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -7,6 +7,7 @@ use ethers::{
 };
 use eyre::Result;
 use rand::random;
+use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
     time::{sleep, Duration},
@@ -17,6 +18,19 @@ use crate::{
     snapshot::StateSnapshot,
     types::{CommitBlockInfoV1, ParseError},
 };
+
+/// MAX_RETRIES is the maximum number of retries on failed L1 call.
+const MAX_RETRIES: u8 = 5;
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Error, Debug)]
+pub enum L1FetchError {
+    #[error("get logs failed")]
+    GetLogs,
+
+    #[error("get tx failed")]
+    GetTx,
+}
 
 pub struct L1Fetcher {
     provider: Provider<Http>,
@@ -82,33 +96,22 @@ impl L1Fetcher {
         // - BlockCommit event filter.
         // - Referred L1 block fetch.
         // - Calldata parsing.
-        let provider = self.provider.clone();
-        tokio::spawn(async move {
-            while let Some(hash) = hash_rx.recv().await {
-                let mut tx: Option<_> = None;
-
-                'retry: for attempt in 1..6 {
-                    match provider.get_transaction(hash).await {
-                        Ok(x) => {
-                            tx = x;
-                            break 'retry;
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "attempt {attempt}: failed to get transaction for hash {hash}: {e}"
-                            );
-
-                            sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
-                        }
+        tokio::spawn({
+            let provider = self.provider.clone();
+            async move {
+                while let Some(hash) = hash_rx.recv().await {
+                    let data = match L1Fetcher::retry_call(
+                        || provider.get_transaction(hash),
+                        L1FetchError::GetTx,
+                    )
+                    .await
+                    {
+                        Ok(Some(tx)) => tx.input,
+                        _ => continue,
                     };
+
+                    calldata_tx.send(data).await.unwrap();
                 }
-
-                let data = match tx {
-                    Some(tx) => tx.input,
-                    None => continue,
-                };
-
-                calldata_tx.send(data).await.unwrap();
             }
         });
 
@@ -139,7 +142,9 @@ impl L1Fetcher {
                 .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
-            let logs = self.provider.get_logs(&filter).await?;
+            let logs =
+                L1Fetcher::retry_call(|| self.provider.get_logs(&filter), L1FetchError::GetLogs)
+                    .await?;
             for log in logs {
                 // log.topics:
                 // topics[1]: L2 block number.
@@ -168,6 +173,22 @@ impl L1Fetcher {
         }
 
         Ok(())
+    }
+
+    async fn retry_call<T, Fut>(callback: impl Fn() -> Fut, err: L1FetchError) -> Result<T>
+    where
+        Fut: Future<Output = Result<T, ProviderError>>,
+    {
+        for attempt in 1..MAX_RETRIES + 1 {
+            match callback().await {
+                Ok(x) => return Ok(x),
+                Err(e) => {
+                    tracing::error!("attempt {attempt}: failed to fetch from L1: {e}");
+                    sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
+                }
+            }
+        }
+        Err(err.into())
     }
 }
 
