@@ -16,6 +16,9 @@ pub struct L1FetcherOptions {
     /// The number of blocks to process from Ethereum.
     #[arg(long)]
     pub block_count: Option<u64>,
+    /// If present, don't poll for new blocks after reaching the end.
+    #[arg(long)]
+    pub disable_polling: bool,
 }
 
 #[derive(Subcommand)]

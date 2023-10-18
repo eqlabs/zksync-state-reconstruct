@@ -21,6 +21,8 @@ use crate::{
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
 const MAX_RETRIES: u8 = 5;
+/// The interval in seconds in which to poll for new blocks.
+const LONG_POLLING_INTERVAL_S: u64 = 120;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Error, Debug)]
@@ -53,11 +55,13 @@ impl L1Fetcher {
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn fetch(
         &self,
         sink: mpsc::Sender<CommitBlockInfoV1>,
         start_block: Option<U64>,
         end_block: Option<U64>,
+        mut disable_polling: bool,
     ) -> Result<()> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
@@ -77,15 +81,6 @@ impl L1Fetcher {
             };
         }
 
-        let end_block_number = end_block.unwrap_or(
-            self.provider
-                .get_block(BlockNumber::Latest)
-                .await?
-                .unwrap()
-                .number
-                .unwrap(),
-        );
-
         let event = self.contract.events_by_name("BlockCommit")?[0].clone();
         let function = self.contract.functions_by_name("commitBlocks")?[0].clone();
 
@@ -96,7 +91,7 @@ impl L1Fetcher {
         // - BlockCommit event filter.
         // - Referred L1 block fetch.
         // - Calldata parsing.
-        tokio::spawn({
+        let tx_handle = tokio::spawn({
             let provider = self.provider.clone();
             async move {
                 while let Some(hash) = hash_rx.recv().await {
@@ -115,7 +110,7 @@ impl L1Fetcher {
             }
         });
 
-        tokio::spawn(async move {
+        let parse_handle = tokio::spawn(async move {
             while let Some(calldata) = calldata_rx.recv().await {
                 let blocks = match parse_calldata(&function, &calldata) {
                     Ok(blks) => blks,
@@ -131,8 +126,31 @@ impl L1Fetcher {
             }
         });
 
+        // If an `end_block` was supplied we shouldn't poll for newer blocks.
+        if end_block.is_some() {
+            disable_polling = true;
+        }
+
+        let end_block_number = end_block.unwrap_or(
+            self.provider
+                .get_block(BlockNumber::Latest)
+                .await?
+                .unwrap()
+                .number
+                .unwrap(),
+        );
+
         let mut latest_l2_block_number = U256::zero();
-        while current_l1_block_number <= end_block_number {
+        loop {
+            if disable_polling && current_l1_block_number > end_block_number {
+                tracing::info!("Successfully reached end block. Shutting down...");
+                tx_handle.abort();
+                parse_handle.abort();
+                let _ = tx_handle.await;
+                let _ = parse_handle.await;
+                return Ok(());
+            }
+
             // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
             // TODO: Filter by executed blocks too.
             let filter = Filter::new()
@@ -142,26 +160,31 @@ impl L1Fetcher {
                 .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
-            let logs =
+            if let Ok(logs) =
                 L1Fetcher::retry_call(|| self.provider.get_logs(&filter), L1FetchError::GetLogs)
-                    .await?;
-            for log in logs {
-                // log.topics:
-                // topics[1]: L2 block number.
-                // topics[2]: L2 block hash.
-                // topics[3]: L2 commitment.
+                    .await
+            {
+                for log in logs {
+                    // log.topics:
+                    // topics[1]: L2 block number.
+                    // topics[2]: L2 block hash.
+                    // topics[3]: L2 commitment.
 
-                let new_l2_block_number = U256::from_big_endian(log.topics[1].as_fixed_bytes());
-                if new_l2_block_number <= latest_l2_block_number {
-                    continue;
+                    let new_l2_block_number = U256::from_big_endian(log.topics[1].as_fixed_bytes());
+                    if new_l2_block_number <= latest_l2_block_number {
+                        continue;
+                    }
+
+                    if let Some(tx_hash) = log.transaction_hash {
+                        hash_tx.send(tx_hash).await?;
+                    }
+
+                    latest_l2_block_number = new_l2_block_number;
                 }
-
-                if let Some(tx_hash) = log.transaction_hash {
-                    hash_tx.send(tx_hash).await?;
-                }
-
-                latest_l2_block_number = new_l2_block_number;
-            }
+            } else {
+                tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                continue;
+            };
 
             // Store our current L1 block number so we can resume if the process exits.
             if let Some(snapshot) = &self.snapshot {
@@ -171,8 +194,6 @@ impl L1Fetcher {
             // Increment current block index.
             current_l1_block_number += BLOCK_STEP.into();
         }
-
-        Ok(())
     }
 
     async fn retry_call<T, Fut>(callback: impl Fn() -> Fut, err: L1FetchError) -> Result<T>
