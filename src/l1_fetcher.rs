@@ -139,7 +139,22 @@ impl L1Fetcher {
                 .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
-            let logs = self.provider.get_logs(&filter).await?;
+            let mut resp: Option<_> = None;
+            'retry: for attempt in 1..6 {
+                match self.provider.get_logs(&filter).await {
+                    Ok(x) => {
+                        resp = Some(x);
+                        break 'retry;
+                    }
+                    Err(e) => {
+                        tracing::error!("attempt {attempt}: failed to get logs: {e}");
+
+                        sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
+                    }
+                };
+            }
+
+            let logs = resp.expect("get_logs(filter)");
             for log in logs {
                 // log.topics:
                 // topics[1]: L2 block number.
