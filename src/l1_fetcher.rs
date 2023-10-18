@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{fmt, future::Future, ops::Fn, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -23,9 +23,9 @@ use crate::{
 const MAX_RETRIES: u8 = 5;
 
 #[derive(Error, Debug)]
-pub struct L1GetLogsError;
+pub struct L1FetchError;
 
-impl fmt::Display for L1GetLogsError {
+impl fmt::Display for L1FetchError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "failed to get logs")
     }
@@ -152,7 +152,9 @@ impl L1Fetcher {
                 .to_block(current_l1_block_number + BLOCK_STEP);
 
             // Grab all relevant logs.
-            let logs = self.get_logs(&filter).await?;
+            let logs = self
+                .retry_call::<Vec<Log>, _>(|| async { provider.get_logs(&filter).await })
+                .await?;
             for log in logs {
                 // log.topics:
                 // topics[1]: L2 block number.
@@ -183,20 +185,20 @@ impl L1Fetcher {
         Ok(())
     }
 
-    async fn get_logs(&self, filter: &Filter) -> Result<Vec<Log>> {
+    async fn retry_call<T, Fut>(&self, callback: impl Fn() -> Fut) -> Result<T>
+    where
+        Fut: Future<Output = Result<T>>,
+    {
         for attempt in 1..MAX_RETRIES + 1 {
-            match self.provider.get_logs(&filter).await {
+            match callback().await {
                 Ok(x) => return Ok(x),
-
                 Err(e) => {
-                    tracing::error!("attempt {attempt}: failed to get logs: {e}");
-
+                    tracing::error!("attempt {attempt}: failed to fetch from L1: {e}");
                     sleep(Duration::from_millis(50 + random::<u64>() % 500)).await;
                 }
             }
         }
-
-        Err(L1GetLogsError {}.into())
+        Err(L1FetchError {}.into())
     }
 }
 
