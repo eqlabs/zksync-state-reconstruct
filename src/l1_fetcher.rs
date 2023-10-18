@@ -19,7 +19,7 @@ use crate::{
     types::{CommitBlockInfoV1, ParseError},
 };
 
-/// MAX_RETRIES is the maximum number of retries on failed L1 call.
+/// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
 const MAX_RETRIES: u8 = 5;
 
 #[allow(clippy::enum_variant_names)]
@@ -179,7 +179,7 @@ impl L1Fetcher {
     where
         Fut: Future<Output = Result<T, ProviderError>>,
     {
-        for attempt in 1..MAX_RETRIES + 1 {
+        for attempt in 1..=MAX_RETRIES {
             match callback().await {
                 Ok(x) => return Ok(x),
                 Err(e) => {
