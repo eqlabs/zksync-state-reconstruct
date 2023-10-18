@@ -1,9 +1,9 @@
 use std::{fs, path::Path, str::FromStr};
 
+use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
 use eyre::Result;
 use indexmap::IndexSet;
-use zk_evm::aux_structures::LogQuery;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use super::RootHash;
@@ -128,7 +128,7 @@ fn reconstruct_genesis_state<D: Database>(
 
     // Batch.
     for el in &block_batched_accesses {
-        let derived_key = LogQuery::derive_final_address_for_params(&el.0, &el.1);
+        let derived_key = derive_final_address_for_params(&el.0, &el.1);
         key_set.insert(derived_key);
     }
 
@@ -150,7 +150,7 @@ fn reconstruct_genesis_state<D: Database>(
 
     let mut key_value_pairs: Vec<(U256, H256)> = Vec::with_capacity(batched.len());
     for (address, key, value) in batched {
-        let derived_key = LogQuery::derive_final_address_for_params(&address, &key);
+        let derived_key = derive_final_address_for_params(&address, &key);
         // TODO: what to do here?
         // let version = tree.latest_version().unwrap_or_default();
         // let _leaf = tree.read_leaves(version, &[key]);
@@ -174,4 +174,15 @@ fn reconstruct_genesis_state<D: Database>(
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())
+}
+
+fn derive_final_address_for_params(address: &Address, key: &U256) -> [u8; 32] {
+    let mut buffer = [0u8; 64];
+    buffer[12..32].copy_from_slice(&address.0);
+    key.to_big_endian(&mut buffer[32..64]);
+
+    let mut result = [0u8; 32];
+    result.copy_from_slice(Blake2s256::digest(buffer).as_slice());
+
+    result
 }
