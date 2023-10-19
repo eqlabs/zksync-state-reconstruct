@@ -68,7 +68,7 @@ impl L1Metrics {
             None => "∞".to_string(),
         };
 
-        println!(
+        tracing::info!(
             "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
             progress,
             self.latest_l1_block_nbr,
