@@ -27,7 +27,6 @@ pub struct TreeProcessor<'a> {
 
 impl TreeProcessor<'static> {
     pub async fn new(db_path: PathBuf, snapshot: Arc<Mutex<StateSnapshot>>) -> Result<Self> {
-        // TODO: Implement graceful shutdown.
         // If database directory already exists, we try to restore the latest state.
         // The state contains the last processed block and a mapping of index to key
         // values, if a state file does not exist, we simply use the defaults instead.
@@ -60,7 +59,7 @@ impl Processor for TreeProcessor<'static> {
             let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
             if snapshot.latest_l2_block_number >= block.block_number {
-                tracing::info!(
+                tracing::debug!(
                     "Block {} has already been processed, skipping.",
                     block.block_number
                 );
