@@ -14,6 +14,7 @@ use tokio::{
 };
 
 use crate::{
+    cli::L1FetcherOptions,
     constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
     snapshot::StateSnapshot,
     types::{CommitBlockInfoV1, ParseError},
@@ -80,13 +81,17 @@ impl L1Metrics {
 pub struct L1Fetcher {
     provider: Provider<Http>,
     contract: Contract,
+    config: L1FetcherOptions,
     snapshot: Option<Arc<Mutex<StateSnapshot>>>,
 }
 
 impl L1Fetcher {
-    pub fn new(http_url: &str, snapshot: Option<Arc<Mutex<StateSnapshot>>>) -> Result<Self> {
+    pub fn new(
+        config: L1FetcherOptions,
+        snapshot: Option<Arc<Mutex<StateSnapshot>>>,
+    ) -> Result<Self> {
         let provider =
-            Provider::<Http>::try_from(http_url).expect("could not instantiate HTTP Provider");
+            Provider::<Http>::try_from(&config.http_url).expect("could not instantiate HTTP Provider");
 
         let abi_file = std::fs::File::open("./IZkSync.json")?;
         let contract = Contract::load(abi_file)?;
@@ -94,22 +99,20 @@ impl L1Fetcher {
         Ok(L1Fetcher {
             provider,
             contract,
+            config,
             snapshot,
         })
     }
 
     #[allow(clippy::too_many_lines)]
-    pub async fn fetch(
+    pub async fn run(
         &self,
         sink: mpsc::Sender<CommitBlockInfoV1>,
-        start_block: Option<U64>,
-        end_block: Option<U64>,
-        mut disable_polling: bool,
     ) -> Result<()> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
         // exists, start from the block number specified in that snapshot.
-        let mut current_l1_block_number = start_block.unwrap_or(GENESIS_BLOCK.into());
+        let mut current_l1_block_number = U64::from(self.config.start_block);
         // User might have supplied their own start block, in that case we shouldn't enforce the
         // use of the snapshot value.
         if current_l1_block_number == GENESIS_BLOCK.into() {
@@ -206,6 +209,9 @@ impl L1Fetcher {
             let provider_clone = self.provider.clone();
             let snapshot_clone = self.snapshot.clone();
             let metrics = metrics.clone();
+            let mut disable_polling = self.config.disable_polling;
+            let end_block = self.config.block_count.map(|count| U64::from(self.config.start_block + count));
+
             async move {
                 let mut latest_l2_block_number = U256::zero();
 

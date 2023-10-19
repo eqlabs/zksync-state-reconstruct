@@ -20,9 +20,8 @@ use std::{
 };
 
 use clap::Parser;
-use cli::{Cli, Command, L1FetcherOptions, Query, ReconstructSource};
+use cli::{Cli, Command, Query, ReconstructSource};
 use constants::storage;
-use ethers::types::U64;
 use eyre::Result;
 use snapshot::StateSnapshot;
 use tokio::sync::{mpsc, Mutex};
@@ -70,19 +69,10 @@ async fn main() -> Result<()> {
             };
 
             match source {
-                ReconstructSource::L1 {
-                    l1_fetcher_options:
-                        L1FetcherOptions {
-                            http_url,
-                            start_block,
-                            block_step: _,
-                            block_count,
-                            disable_polling,
-                        },
-                } => {
+                ReconstructSource::L1 { l1_fetcher_options } => {
                     let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));
 
-                    let fetcher = L1Fetcher::new(&http_url, Some(snapshot.clone()))?;
+                    let fetcher = L1Fetcher::new(l1_fetcher_options, Some(snapshot.clone()))?;
                     let processor = TreeProcessor::new(db_path, snapshot.clone()).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
@@ -90,11 +80,7 @@ async fn main() -> Result<()> {
                         processor.run(rx).await;
                     });
 
-                    let end_block = block_count.map(|n| U64([start_block + n]));
-
-                    fetcher
-                        .fetch(tx, Some(U64([start_block])), end_block, disable_polling)
-                        .await?;
+                    fetcher.run(tx).await?;
                     processor_handle.await?;
                 }
                 ReconstructSource::File { file } => {
@@ -120,17 +106,10 @@ async fn main() -> Result<()> {
             }
         }
         Command::Download {
-            l1_fetcher_options:
-                L1FetcherOptions {
-                    http_url,
-                    start_block,
-                    block_step: _,
-                    block_count,
-                    disable_polling,
-                },
+            l1_fetcher_options,
             file,
         } => {
-            let fetcher = L1Fetcher::new(&http_url, None)?;
+            let fetcher = L1Fetcher::new(l1_fetcher_options, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
@@ -138,11 +117,7 @@ async fn main() -> Result<()> {
                 processor.run(rx).await;
             });
 
-            let end_block = block_count.map(|n| U64([start_block + n]));
-
-            fetcher
-                .fetch(tx, Some(U64([start_block])), end_block, disable_polling)
-                .await?;
+            fetcher.run(tx).await?;
             processor_handle.await?;
         }
         Command::Query {
