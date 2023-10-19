@@ -50,7 +50,10 @@ struct L1Metrics {
 
 impl L1Metrics {
     fn print(&mut self) {
-        if self.first_l1_block.is_none() {
+        if self.first_l1_block.is_none()
+            || self.latest_l1_block_nbr == 0
+            || self.latest_l2_block_nbr == 0
+        {
             return;
         }
 
@@ -59,7 +62,7 @@ impl L1Metrics {
             Some(last_l1_block) => {
                 let total = last_l1_block - first_l1_block;
                 let cur = self.latest_l1_block_nbr - first_l1_block;
-                let perc: u64 = cur / total;
+                let perc = (cur * 100) / total;
                 format!("{perc}%")
             }
             None => "∞".to_string(),
@@ -169,7 +172,6 @@ impl L1Fetcher {
                         if last_block < current_block {
                             let mut metrics = metrics.lock().await;
                             metrics.l1_blocks_processed += current_block - last_block;
-                            metrics.latest_l1_block_nbr = current_block;
                             last_block = current_block;
                         }
                     }
@@ -206,6 +208,7 @@ impl L1Fetcher {
         let main_handle = tokio::spawn({
             let provider_clone = self.provider.clone();
             let snapshot_clone = self.snapshot.clone();
+            let metrics = metrics.clone();
             async move {
                 let mut latest_l2_block_number = U256::zero();
 
@@ -279,6 +282,8 @@ impl L1Fetcher {
                         snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
                     }
 
+                    metrics.lock().await.latest_l1_block_nbr = current_l1_block_number.as_u64();
+
                     // Increment current block index.
                     current_l1_block_number += BLOCK_STEP.into();
                 }
@@ -295,6 +300,8 @@ impl L1Fetcher {
         main_handle.await?;
         tx_handle.await?;
         parse_handle.await?;
+
+        metrics.lock().await.print();
 
         Ok(())
     }
