@@ -44,7 +44,6 @@ pub enum Query {
 #[derive(Subcommand)]
 pub enum Command {
     /// Download L2 state from L1 to JSON file.
-    #[command(hide = true)]
     Download {
         #[command(flatten)]
         l1_fetcher_options: L1FetcherOptions,

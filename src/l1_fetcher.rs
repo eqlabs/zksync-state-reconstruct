@@ -9,7 +9,7 @@ use eyre::Result;
 use rand::random;
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, Mutex},
+    sync::{mpsc, oneshot, Mutex},
     time::{sleep, Duration},
 };
 
@@ -202,81 +202,97 @@ impl L1Fetcher {
             }
         });
 
-        {
-            // NOTE: The channel should close once it goes out of scope we move it here.
-            let hash_tx = hash_tx;
-            let mut latest_l2_block_number = U256::zero();
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        let main_handle = tokio::spawn({
+            let provider_clone = self.provider.clone();
+            let snapshot_clone = self.snapshot.clone();
+            async move {
+                let mut latest_l2_block_number = U256::zero();
 
-            // If an `end_block` was supplied we shouldn't poll for newer blocks.
-            if end_block.is_some() {
-                disable_polling = true;
-            }
-
-            let end_block_number = end_block.unwrap_or(
-                self.provider
-                    .get_block(BlockNumber::Latest)
-                    .await?
-                    .unwrap()
-                    .number
-                    .unwrap(),
-            );
-
-            if disable_polling {
-                metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
-            }
-
-            loop {
-                if disable_polling && current_l1_block_number > end_block_number {
-                    tracing::info!("Successfully reached end block. Shutting down...");
-                    break;
+                // If an `end_block` was supplied we shouldn't poll for newer blocks.
+                if end_block.is_some() {
+                    disable_polling = true;
                 }
 
-                // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
-                // TODO: Filter by executed blocks too.
-                let filter = Filter::new()
-                    .address(ZK_SYNC_ADDR.parse::<Address>()?)
-                    .topic0(event.signature())
-                    .from_block(current_l1_block_number)
-                    .to_block(current_l1_block_number + BLOCK_STEP);
-
-                // Grab all relevant logs.
-                if let Ok(logs) =
-                    L1Fetcher::retry_call(|| self.provider.get_logs(&filter), L1FetchError::GetLogs)
+                let end_block_number = end_block.unwrap_or(
+                    provider_clone
+                        .get_block(BlockNumber::Latest)
                         .await
-                {
-                    for log in logs {
-                        // log.topics:
-                        // topics[1]: L2 block number.
-                        // topics[2]: L2 block hash.
-                        // topics[3]: L2 commitment.
+                        .unwrap()
+                        .unwrap()
+                        .number
+                        .unwrap(),
+                );
 
-                        let new_l2_block_number =
-                            U256::from_big_endian(log.topics[1].as_fixed_bytes());
-                        if new_l2_block_number <= latest_l2_block_number {
-                            continue;
-                        }
-
-                        if let Some(tx_hash) = log.transaction_hash {
-                            hash_tx.send(tx_hash).await?;
-                        }
-
-                        latest_l2_block_number = new_l2_block_number;
-                    }
-                } else {
-                    tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
-                    continue;
-                };
-
-                // Store our current L1 block number so we can resume if the process exits.
-                if let Some(snapshot) = &self.snapshot {
-                    snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
+                if disable_polling {
+                    metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
                 }
 
-                // Increment current block index.
-                current_l1_block_number += BLOCK_STEP.into();
-            }
-        }
+                loop {
+                    // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
+                    if (disable_polling && current_l1_block_number > end_block_number)
+                        || shutdown_rx.try_recv().is_ok()
+                    {
+                        break;
+                    }
 
+                    // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
+                    // TODO: Filter by executed blocks too.
+                    let filter = Filter::new()
+                        .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
+                        .topic0(event.signature())
+                        .from_block(current_l1_block_number)
+                        .to_block(current_l1_block_number + BLOCK_STEP);
+
+                    // Grab all relevant logs.
+                    if let Ok(logs) = L1Fetcher::retry_call(
+                        || provider_clone.get_logs(&filter),
+                        L1FetchError::GetLogs,
+                    )
+                    .await
+                    {
+                        for log in logs {
+                            // log.topics:
+                            // topics[1]: L2 block number.
+                            // topics[2]: L2 block hash.
+                            // topics[3]: L2 commitment.
+
+                            let new_l2_block_number =
+                                U256::from_big_endian(log.topics[1].as_fixed_bytes());
+                            if new_l2_block_number <= latest_l2_block_number {
+                                continue;
+                            }
+
+                            if let Some(tx_hash) = log.transaction_hash {
+                                hash_tx.send(tx_hash).await.unwrap();
+                            }
+
+                            latest_l2_block_number = new_l2_block_number;
+                        }
+                    } else {
+                        tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                        continue;
+                    };
+
+                    // Store our current L1 block number so we can resume if the process exits.
+                    if let Some(snapshot) = &snapshot_clone {
+                        snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
+                    }
+
+                    // Increment current block index.
+                    current_l1_block_number += BLOCK_STEP.into();
+                }
+            }
+        });
+
+        // Wait for shutdown signal in background.
+        tokio::spawn(async move {
+            let _ = tokio::signal::ctrl_c().await;
+            tracing::info!("Shutdown signal received, finishing up and shutting down...");
+            let _ = shutdown_tx.send("");
+        });
+
+        main_handle.await?;
         tx_handle.await?;
         parse_handle.await?;
 
