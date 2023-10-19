@@ -23,6 +23,8 @@ use crate::{
 const MAX_RETRIES: u8 = 5;
 /// The interval in seconds in which to poll for new blocks.
 const LONG_POLLING_INTERVAL_S: u64 = 120;
+/// The interval in seconds in which to print metrics.
+const METRICS_PRINT_INTERVAL_S: u64 = 10;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Error, Debug)]
@@ -32,6 +34,46 @@ pub enum L1FetchError {
 
     #[error("get tx failed")]
     GetTx,
+}
+
+#[derive(Default)]
+struct L1Metrics {
+    // Metrics variables.
+    l1_blocks_processed: u64,
+    l2_blocks_processed: u64,
+    latest_l1_block_nbr: u64,
+    latest_l2_block_nbr: u64,
+
+    first_l1_block: Option<u64>,
+    last_l1_block: Option<u64>,
+}
+
+impl L1Metrics {
+    fn print(&mut self) {
+        if self.first_l1_block.is_none() {
+            return;
+        }
+
+        let first_l1_block = self.first_l1_block.unwrap();
+        let progress = match self.last_l1_block {
+            Some(last_l1_block) => {
+                let total = last_l1_block - first_l1_block;
+                let cur = self.latest_l1_block_nbr - first_l1_block;
+                let perc: u64 = cur / total;
+                format!("{perc}%")
+            }
+            None => "∞".to_string(),
+        };
+
+        println!(
+            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
+            progress,
+            self.latest_l1_block_nbr,
+            self.latest_l2_block_nbr,
+            self.l1_blocks_processed,
+            self.l2_blocks_processed
+        );
+    }
 }
 
 pub struct L1Fetcher {
@@ -81,6 +123,21 @@ impl L1Fetcher {
             };
         }
 
+        let metrics = Arc::new(Mutex::new(L1Metrics {
+            first_l1_block: Some(current_l1_block_number.as_u64()),
+            ..Default::default()
+        }));
+
+        tokio::spawn({
+            let metrics = metrics.clone();
+            async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
+                    metrics.lock().await.print();
+                }
+            }
+        });
+
         let event = self.contract.events_by_name("BlockCommit")?[0].clone();
         let function = self.contract.functions_by_name("commitBlocks")?[0].clone();
 
@@ -92,36 +149,55 @@ impl L1Fetcher {
         // - Referred L1 block fetch.
         // - Calldata parsing.
         let tx_handle = tokio::spawn({
+            let mut last_block = current_l1_block_number.as_u64().clone();
+            let metrics = metrics.clone();
             let provider = self.provider.clone();
             async move {
                 while let Some(hash) = hash_rx.recv().await {
-                    let data = match L1Fetcher::retry_call(
+                    let tx = match L1Fetcher::retry_call(
                         || provider.get_transaction(hash),
                         L1FetchError::GetTx,
                     )
                     .await
                     {
-                        Ok(Some(tx)) => tx.input,
+                        Ok(Some(tx)) => tx,
                         _ => continue,
                     };
 
-                    calldata_tx.send(data).await.unwrap();
+                    if let Some(current_block) = tx.block_number {
+                        let current_block = current_block.as_u64();
+                        if last_block < current_block {
+                            let mut metrics = metrics.lock().await;
+                            metrics.l1_blocks_processed += current_block - last_block;
+                            metrics.latest_l1_block_nbr = current_block;
+                            last_block = current_block;
+                        }
+                    }
+
+                    calldata_tx.send(tx.input).await.unwrap();
                 }
             }
         });
 
-        let parse_handle = tokio::spawn(async move {
-            while let Some(calldata) = calldata_rx.recv().await {
-                let blocks = match parse_calldata(&function, &calldata) {
-                    Ok(blks) => blks,
-                    Err(e) => {
-                        tracing::error!("failed to parse calldata: {e}");
-                        continue;
-                    }
-                };
+        let parse_handle = tokio::spawn({
+            let metrics = metrics.clone();
+            async move {
+                while let Some(calldata) = calldata_rx.recv().await {
+                    let blocks = match parse_calldata(&function, &calldata) {
+                        Ok(blks) => blks,
+                        Err(e) => {
+                            tracing::error!("failed to parse calldata: {e}");
+                            continue;
+                        }
+                    };
 
-                for blk in blocks {
-                    sink.send(blk).await.unwrap();
+                    for blk in blocks {
+                        // NOTE: Let's see if we want to increment this in batches, instead of each block individually.
+                        let mut metrics = metrics.lock().await;
+                        metrics.l2_blocks_processed += 1;
+                        metrics.latest_l2_block_nbr = blk.block_number;
+                        sink.send(blk).await.unwrap();
+                    }
                 }
             }
         });
@@ -144,6 +220,10 @@ impl L1Fetcher {
                     .number
                     .unwrap(),
             );
+
+            if disable_polling {
+                metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
+            }
 
             loop {
                 if disable_polling && current_l1_block_number > end_block_number {
