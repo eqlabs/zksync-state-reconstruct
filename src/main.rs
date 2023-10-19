@@ -86,11 +86,12 @@ async fn main() -> Result<()> {
                     let processor = TreeProcessor::new(db_path, snapshot.clone()).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
-                    tokio::spawn(async move {
+                    let processor_handle = tokio::spawn(async move {
                         processor.run(rx).await;
                     });
 
                     fetcher.fetch(tx, Some(U64([start_block])), None, disable_polling).await?;
+                    processor_handle.await?;
                 }
                 ReconstructSource::File { file } => {
                     let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));
@@ -129,7 +130,7 @@ async fn main() -> Result<()> {
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
-            tokio::spawn(async move {
+            let processor_handle = tokio::spawn(async move {
                 processor.run(rx).await;
             });
 
@@ -138,6 +139,7 @@ async fn main() -> Result<()> {
             fetcher
                 .fetch(tx, Some(U64([start_block])), end_block, disable_polling)
                 .await?;
+            processor_handle.await?;
         }
         Command::Query {
             query,
