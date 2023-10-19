@@ -90,7 +90,9 @@ async fn main() -> Result<()> {
                         processor.run(rx).await;
                     });
 
-                    fetcher.fetch(tx, Some(U64([start_block])), None, disable_polling).await?;
+                    fetcher
+                        .fetch(tx, Some(U64([start_block])), None, disable_polling)
+                        .await?;
                     processor_handle.await?;
                 }
                 ReconstructSource::File { file } => {
