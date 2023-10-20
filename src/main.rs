@@ -76,7 +76,7 @@ async fn main() -> Result<()> {
                             http_url,
                             start_block,
                             block_step: _,
-                            block_count: _,
+                            block_count,
                             disable_polling,
                         },
                 } => {
@@ -90,8 +90,10 @@ async fn main() -> Result<()> {
                         processor.run(rx).await;
                     });
 
+                    let end_block = block_count.map(|n| U64([start_block + n]));
+
                     fetcher
-                        .fetch(tx, Some(U64([start_block])), None, disable_polling)
+                        .fetch(tx, Some(U64([start_block])), end_block, disable_polling)
                         .await?;
                     processor_handle.await?;
                 }
