@@ -232,6 +232,11 @@ impl L1Fetcher {
                     if (disable_polling && current_l1_block_number > end_block_number)
                         || shutdown_rx.try_recv().is_ok()
                     {
+                        // Store our current L1 block number so we can resume from where we left
+                        // off.
+                        if let Some(snapshot) = &snapshot_clone {
+                            snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
+                        }
                         break;
                     }
 
@@ -272,11 +277,6 @@ impl L1Fetcher {
                         tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
                         continue;
                     };
-
-                    // Store our current L1 block number so we can resume if the process exits.
-                    if let Some(snapshot) = &snapshot_clone {
-                        snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
-                    }
 
                     metrics.lock().await.latest_l1_block_nbr = current_l1_block_number.as_u64();
 
