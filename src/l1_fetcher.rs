@@ -9,7 +9,7 @@ use eyre::Result;
 use rand::random;
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, Mutex, oneshot},
     time::{sleep, Duration},
 };
 
