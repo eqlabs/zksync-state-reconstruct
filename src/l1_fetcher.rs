@@ -157,14 +157,13 @@ impl L1Fetcher {
             let provider = self.provider.clone();
             async move {
                 while let Some(hash) = hash_rx.recv().await {
-                    let tx = match L1Fetcher::retry_call(
+                    let Ok(Some(tx)) = L1Fetcher::retry_call(
                         || provider.get_transaction(hash),
                         L1FetchError::GetTx,
                     )
                     .await
-                    {
-                        Ok(Some(tx)) => tx,
-                        _ => continue,
+                    else {
+                        continue;
                     };
 
                     if let Some(current_block) = tx.block_number {
