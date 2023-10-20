@@ -63,7 +63,7 @@ impl L1Metrics {
                 let total = last_l1_block - first_l1_block;
                 let cur = self.latest_l1_block_nbr - first_l1_block;
                 let perc = (cur * 100) / total;
-                format!("{perc}%")
+                format!("{perc:>2}%")
             }
             None => "∞".to_string(),
         };
