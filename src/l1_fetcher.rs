@@ -62,7 +62,8 @@ impl L1Metrics {
             Some(last_l1_block) => {
                 let total = last_l1_block - first_l1_block;
                 let cur = self.latest_l1_block_nbr - first_l1_block;
-                let perc = (cur * 100) / total;
+                // If polling past `last_l1_block`, stop at 100%.
+                let perc = std::cmp::min((cur * 100) / total, 100);
                 format!("{perc:>2}%")
             }
             None => "∞".to_string(),
@@ -226,9 +227,8 @@ impl L1Fetcher {
                         .unwrap(),
                 );
 
-                if disable_polling {
-                    metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
-                }
+                // Update last L1 block to metrics calculation.
+                metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
 
                 loop {
                     // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
