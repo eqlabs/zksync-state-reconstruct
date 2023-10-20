@@ -152,7 +152,7 @@ impl L1Fetcher {
         // - Referred L1 block fetch.
         // - Calldata parsing.
         let tx_handle = tokio::spawn({
-            let mut last_block = current_l1_block_number.as_u64().clone();
+            let mut last_block = current_l1_block_number.as_u64();
             let metrics = metrics.clone();
             let provider = self.provider.clone();
             async move {
