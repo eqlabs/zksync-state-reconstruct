@@ -45,7 +45,7 @@ struct L1Metrics {
     latest_l2_block_nbr: u64,
 
     first_l1_block: Option<u64>,
-    last_l1_block: Option<u64>,
+    last_l1_block: u64,
 }
 
 impl L1Metrics {
@@ -58,15 +58,12 @@ impl L1Metrics {
         }
 
         let first_l1_block = self.first_l1_block.unwrap();
-        let progress = match self.last_l1_block {
-            Some(last_l1_block) => {
-                let total = last_l1_block - first_l1_block;
-                let cur = self.latest_l1_block_nbr - first_l1_block;
-                // If polling past `last_l1_block`, stop at 100%.
-                let perc = std::cmp::min((cur * 100) / total, 100);
-                format!("{perc:>2}%")
-            }
-            None => "∞".to_string(),
+        let progress = {
+            let total = self.last_l1_block - first_l1_block;
+            let cur = self.latest_l1_block_nbr - first_l1_block;
+            // If polling past `last_l1_block`, stop at 100%.
+            let perc = std::cmp::min((cur * 100) / total, 100);
+            format!("{perc:>2}%")
         };
 
         tracing::info!(
@@ -228,7 +225,7 @@ impl L1Fetcher {
                 );
 
                 // Update last L1 block to metrics calculation.
-                metrics.clone().lock().await.last_l1_block = Some(end_block_number.as_u64());
+                metrics.clone().lock().await.last_l1_block = end_block_number.as_u64();
 
                 loop {
                     // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
