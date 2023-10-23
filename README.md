@@ -9,13 +9,13 @@ rustup toolchain install nightly
 ```
 
 ## Usage
-To start reconstructing the state, run the following command with a valid HTTP/HTTPS Etherum JSON-RPC endpoint:
+To start reconstructing the state, run the following command with any valid HTTP/HTTPS Ethereum JSON-RPC endpoint, for example using `https://eth.llamarpc.com`:
 
 ```fish
-cargo +nightly run -- reconstruct l1 --http-url <HTTP_URL>
+cargo +nightly run -- reconstruct l1 --http-url https://eth.llamarpc.com
 ```
 
-To view all available options you can use the `help` command:
+To view all available options, you can use the `help` command:
 
 ```fish
 $ cargo +nightly run -- --help
