@@ -90,8 +90,8 @@ impl L1Fetcher {
         config: L1FetcherOptions,
         snapshot: Option<Arc<Mutex<StateSnapshot>>>,
     ) -> Result<Self> {
-        let provider =
-            Provider::<Http>::try_from(&config.http_url).expect("could not instantiate HTTP Provider");
+        let provider = Provider::<Http>::try_from(&config.http_url)
+            .expect("could not instantiate HTTP Provider");
 
         let abi_file = std::fs::File::open("./IZkSync.json")?;
         let contract = Contract::load(abi_file)?;
@@ -105,10 +105,7 @@ impl L1Fetcher {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub async fn run(
-        &self,
-        sink: mpsc::Sender<CommitBlockInfoV1>,
-    ) -> Result<()> {
+    pub async fn run(&self, sink: mpsc::Sender<CommitBlockInfoV1>) -> Result<()> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
         // exists, start from the block number specified in that snapshot.
@@ -210,7 +207,10 @@ impl L1Fetcher {
             let snapshot_clone = self.snapshot.clone();
             let metrics = metrics.clone();
             let mut disable_polling = self.config.disable_polling;
-            let end_block = self.config.block_count.map(|count| U64::from(self.config.start_block + count));
+            let end_block = self
+                .config
+                .block_count
+                .map(|count| U64::from(self.config.start_block + count));
 
             async move {
                 let mut latest_l2_block_number = U256::zero();
