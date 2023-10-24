@@ -20,7 +20,7 @@ use std::{
 };
 
 use clap::Parser;
-use cli::{Cli, Command, Query, ReconstructSource};
+use cli::{Cli, Command, ReconstructSource};
 use constants::storage;
 use eyre::Result;
 use snapshot::StateSnapshot;
@@ -131,9 +131,7 @@ async fn main() -> Result<()> {
             };
 
             let tree = QueryTree::new(&db_path);
-            let result = match query {
-                Query::RootHash => tree.latest_root_hash(),
-            };
+            let result = tree.query(&query);
 
             if json {
                 println!("{}", serde_json::to_string(&result)?);
