@@ -45,23 +45,19 @@ struct L1Metrics {
     latest_l1_block_nbr: u64,
     latest_l2_block_nbr: u64,
 
-    first_l1_block: Option<u64>,
+    first_l1_block: u64,
     last_l1_block: u64,
 }
 
 impl L1Metrics {
     fn print(&mut self) {
-        if self.first_l1_block.is_none()
-            || self.latest_l1_block_nbr == 0
-            || self.latest_l2_block_nbr == 0
-        {
+        if self.latest_l1_block_nbr == 0 || self.latest_l2_block_nbr == 0 {
             return;
         }
 
-        let first_l1_block = self.first_l1_block.unwrap();
         let progress = {
-            let total = self.last_l1_block - first_l1_block;
-            let cur = self.latest_l1_block_nbr - first_l1_block;
+            let total = self.last_l1_block - self.first_l1_block;
+            let cur = self.latest_l1_block_nbr - self.first_l1_block;
             // If polling past `last_l1_block`, stop at 100%.
             let perc = std::cmp::min((cur * 100) / total, 100);
             format!("{perc:>2}%")
@@ -133,8 +129,8 @@ impl L1Fetcher {
             let metrics = metrics.clone();
             async move {
                 loop {
-                    tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
                     metrics.lock().await.print();
+                    tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
                 }
             }
         });
@@ -239,7 +235,8 @@ impl L1Fetcher {
                         || shutdown_rx.try_recv().is_ok()
                     {
                         // Store our current L1 block number so we can resume from where we left
-                        // off.
+                        // off, we also make sure to update the metrics before leaving the loop.
+                        metrics.lock().await.latest_l1_block_nbr = current_l1_block_number.as_u64();
                         if let Some(snapshot) = &snapshot_clone {
                             snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
                         }
