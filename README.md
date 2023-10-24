@@ -52,3 +52,15 @@ Options:
   -d, --db-path <DB_PATH>  The path to the storage solution [env: ZK_SYNC_DB_PATH=]
   -h, --help               Print help
 ```
+
+## Container image
+
+To build the container image:
+```fish
+$ podman build -t state-reconstruction:latest .
+```
+
+To run it with `podman`:
+```fish
+$ podman run -it state-reconstruction:latest
+```
