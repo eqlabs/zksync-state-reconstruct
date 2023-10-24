@@ -51,7 +51,7 @@ struct L1Metrics {
 
 impl L1Metrics {
     fn print(&mut self) {
-        if self.latest_l1_block_nbr == 0 || self.latest_l2_block_nbr == 0 {
+        if self.latest_l1_block_nbr == 0 {
             return;
         }
 
@@ -123,14 +123,38 @@ impl L1Fetcher {
             };
         }
 
-        self.metrics.lock().await.first_l1_block = current_l1_block_number.as_u64();
+        let end_block = self
+            .config
+            .block_count
+            .map(|count| U64::from(self.config.start_block + count));
+
+        let end_block_number = end_block.unwrap_or(
+            self.provider
+                .get_block(BlockNumber::Latest)
+                .await
+                .unwrap()
+                .unwrap()
+                .number
+                .unwrap(),
+        );
+
+        // Initialize metrics with last state, if it exists.
+        {
+            let mut metrics = self.metrics.lock().await;
+            metrics.last_l1_block = end_block_number.as_u64();
+            metrics.first_l1_block = current_l1_block_number.as_u64();
+            metrics.latest_l1_block_nbr = current_l1_block_number.as_u64();
+            if let Some(snapshot) = &self.snapshot {
+                metrics.latest_l2_block_nbr = snapshot.lock().await.latest_l2_block_number;
+            }
+        }
 
         tokio::spawn({
             let metrics = self.metrics.clone();
             async move {
                 loop {
-                    tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
                     metrics.lock().await.print();
+                    tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
                 }
             }
         });
@@ -143,17 +167,29 @@ impl L1Fetcher {
             let _ = shutdown_tx.send("");
         });
 
+        let (hash_tx, hash_rx) = mpsc::channel(5);
+        let (calldata_tx, calldata_rx) = mpsc::channel(5);
+
+        // If an `end_block` was supplied we shouldn't poll for newer blocks.
+        let mut disable_polling = self.config.disable_polling;
+        if end_block.is_some() {
+            disable_polling = false;
+        }
+
         // Split L1 block processing into three async steps:
         // - BlockCommit event filter (main).
         // - Referred L1 block fetch (tx).
         // - Calldata parsing (parse).
-        let (hash_tx, hash_rx) = mpsc::channel(5);
-        let (calldata_tx, calldata_rx) = mpsc::channel(5);
-
         let tx_handle =
             self.spawn_tx_handle(hash_rx, calldata_tx, current_l1_block_number.as_u64());
         let parse_handle = self.spawn_parse_handle(calldata_rx, sink)?;
-        let main_handle = self.spawn_main_handle(hash_tx, shutdown_rx, current_l1_block_number)?;
+        let main_handle = self.spawn_main_handle(
+            hash_tx,
+            shutdown_rx,
+            current_l1_block_number,
+            end_block_number,
+            disable_polling,
+        )?;
 
         tx_handle.await?;
         parse_handle.await?;
@@ -169,38 +205,17 @@ impl L1Fetcher {
         hash_tx: mpsc::Sender<H256>,
         mut shutdown_rx: oneshot::Receiver<&'static str>,
         mut current_l1_block_number: U64,
+        end_block_number: U64,
+        disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<()>> {
         let metrics = self.metrics.clone();
         let event = self.contract.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
         let snapshot_clone = self.snapshot.clone();
-        let mut disable_polling = self.config.disable_polling;
-        let end_block = self
-            .config
-            .block_count
-            .map(|count| U64::from(self.config.start_block + count));
 
         Ok(tokio::spawn({
             async move {
                 let mut latest_l2_block_number = U256::zero();
-
-                // If an `end_block` was supplied we shouldn't poll for newer blocks.
-                if end_block.is_some() {
-                    disable_polling = true;
-                }
-
-                let end_block_number = end_block.unwrap_or(
-                    provider_clone
-                        .get_block(BlockNumber::Latest)
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .number
-                        .unwrap(),
-                );
-
-                // Update last L1 block to metrics calculation.
-                metrics.clone().lock().await.last_l1_block = end_block_number.as_u64();
 
                 loop {
                     // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
