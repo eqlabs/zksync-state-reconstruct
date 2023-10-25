@@ -181,9 +181,9 @@ impl L1Fetcher {
         // - Referred L1 block fetch (tx).
         // - Calldata parsing (parse).
         let tx_handle =
-            self.spawn_tx_handle(hash_rx, calldata_tx, current_l1_block_number.as_u64());
-        let parse_handle = self.spawn_parse_handle(calldata_rx, sink)?;
-        let main_handle = self.spawn_main_handle(
+            self.spawn_tx_handler(hash_rx, calldata_tx, current_l1_block_number.as_u64());
+        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink)?;
+        let main_handle = self.spawn_main_handler(
             hash_tx,
             shutdown_rx,
             current_l1_block_number,
@@ -200,7 +200,7 @@ impl L1Fetcher {
         Ok(())
     }
 
-    fn spawn_main_handle(
+    fn spawn_main_handler(
         &self,
         hash_tx: mpsc::Sender<H256>,
         mut shutdown_rx: oneshot::Receiver<&'static str>,
@@ -278,7 +278,7 @@ impl L1Fetcher {
         }))
     }
 
-    fn spawn_tx_handle(
+    fn spawn_tx_handler(
         &self,
         mut hash_rx: mpsc::Receiver<H256>,
         calldata_tx: mpsc::Sender<Bytes>,
@@ -314,7 +314,7 @@ impl L1Fetcher {
         })
     }
 
-    fn spawn_parse_handle(
+    fn spawn_parsing_handler(
         &self,
         mut calldata_rx: mpsc::Receiver<Bytes>,
         sink: mpsc::Sender<CommitBlockInfoV1>,
