@@ -4,20 +4,21 @@ version = "0.1.0"
 edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = ["state-reconstruct-fetcher"]
+
 [dependencies]
-async-trait = "0.1.73"
+async-trait = "0.1.74"
 blake2 = "0.10.6"
-clap = { version = "4.4.0", features = ["derive", "env"] }
-ethers = "1"
+clap = { version = "4.4.7", features = ["derive", "env"] }
+ethers = "1.0.2"
 eyre = "0.6.8"
 hex = "0.4.3"
-indexmap = { version = "2.0.1", features = ["serde"] }
-rand = "0.8.0"
-serde = { version = "1.0.188", features = ["derive"] }
+indexmap = { version = "2.0.2" }
+serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
-serde_json_any_key = "2.0.0"
-thiserror = "1.0"
-tokio = { version = "1.32.0", features = ["macros", "signal"] }
-tracing = "0.1.37"
+state-reconstruct-fetcher = { path = "./state-reconstruct-fetcher" }
+tokio = { version = "1.33.0", features = ["macros"] }
+tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
 zksync_merkle_tree = { git = "https://github.com/matter-labs/zksync-era.git" }
