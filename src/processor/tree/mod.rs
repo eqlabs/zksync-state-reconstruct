@@ -6,13 +6,13 @@ use std::{io, path::PathBuf, sync::Arc};
 use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
+use state_reconstruct_fetcher::{
+    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlockInfoV1,
+};
 use tokio::sync::{mpsc, Mutex};
 
 use self::tree_wrapper::TreeWrapper;
 use super::Processor;
-use crate::{
-    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlockInfoV1,
-};
 
 pub type RootHash = H256;
 

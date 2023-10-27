@@ -1,14 +1,8 @@
-#![feature(array_chunks)]
-#![feature(iter_next_chunk)]
 #![warn(clippy::pedantic)]
 #![allow(clippy::module_name_repetitions)]
 
 mod cli;
-mod constants;
-mod l1_fetcher;
 mod processor;
-mod snapshot;
-mod types;
 mod util;
 
 use std::{
@@ -21,20 +15,22 @@ use std::{
 
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
-use constants::storage;
 use eyre::Result;
-use snapshot::StateSnapshot;
+use state_reconstruct_fetcher::{
+    constants::storage,
+    l1_fetcher::{L1Fetcher, L1FetcherOptions},
+    snapshot::StateSnapshot,
+    types::CommitBlockInfoV1,
+};
 use tokio::sync::{mpsc, Mutex};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 use crate::{
-    l1_fetcher::L1Fetcher,
     processor::{
         json::JsonSerializationProcessor,
         tree::{query_tree::QueryTree, TreeProcessor},
         Processor,
     },
-    types::CommitBlockInfoV1,
     util::json,
 };
 
@@ -71,8 +67,15 @@ async fn main() -> Result<()> {
             match source {
                 ReconstructSource::L1 { l1_fetcher_options } => {
                     let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));
+                    let fetcher_options = L1FetcherOptions {
+                        http_url: l1_fetcher_options.http_url,
+                        start_block: l1_fetcher_options.start_block,
+                        block_step: l1_fetcher_options.block_step,
+                        block_count: l1_fetcher_options.block_count,
+                        disable_polling: l1_fetcher_options.disable_polling,
+                    };
 
-                    let fetcher = L1Fetcher::new(l1_fetcher_options, Some(snapshot.clone()))?;
+                    let fetcher = L1Fetcher::new(fetcher_options, Some(snapshot.clone()))?;
                     let processor = TreeProcessor::new(db_path, snapshot.clone()).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
@@ -109,7 +112,15 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             file,
         } => {
-            let fetcher = L1Fetcher::new(l1_fetcher_options, None)?;
+            let fetcher_options = L1FetcherOptions {
+                http_url: l1_fetcher_options.http_url,
+                start_block: l1_fetcher_options.start_block,
+                block_step: l1_fetcher_options.block_step,
+                block_count: l1_fetcher_options.block_count,
+                disable_polling: l1_fetcher_options.disable_polling,
+            };
+
+            let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 

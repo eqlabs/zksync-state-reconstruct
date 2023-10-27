@@ -1,6 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-
-use crate::constants::ethereum;
+use state_reconstruct_fetcher::constants::ethereum;
 
 #[derive(Args)]
 pub struct L1FetcherOptions {

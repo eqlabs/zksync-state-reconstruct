@@ -3,11 +3,11 @@ use std::{fs, path::Path, str::FromStr};
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
 use eyre::Result;
+use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlockInfoV1};
 use indexmap::IndexSet;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use super::RootHash;
-use crate::{constants::storage::INITAL_STATE_PATH, CommitBlockInfoV1};
 
 pub struct TreeWrapper<'a> {
     tree: MerkleTree<'a, RocksDBWrapper>,

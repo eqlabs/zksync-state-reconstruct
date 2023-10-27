@@ -14,7 +14,6 @@ use tokio::{
 };
 
 use crate::{
-    cli::L1FetcherOptions,
     constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
     snapshot::StateSnapshot,
     types::{CommitBlockInfoV1, ParseError},
@@ -35,6 +34,19 @@ pub enum L1FetchError {
 
     #[error("get tx failed")]
     GetTx,
+}
+
+pub struct L1FetcherOptions {
+    /// The Ethereum JSON-RPC HTTP URL to use.
+    pub http_url: String,
+    /// Ethereum block number to start state import from.
+    pub start_block: u64,
+    /// The number of blocks to filter & process in one step over.
+    pub block_step: u64,
+    /// The number of blocks to process from Ethereum.
+    pub block_count: Option<u64>,
+    /// If present, don't poll for new blocks after reaching the end.
+    pub disable_polling: bool,
 }
 
 #[derive(Default)]
