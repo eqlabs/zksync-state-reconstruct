@@ -23,6 +23,8 @@ use crate::{
 const MAX_RETRIES: u8 = 5;
 /// The interval in seconds in which to poll for new blocks.
 const LONG_POLLING_INTERVAL_S: u64 = 120;
+/// The interval in seconds to wait before retrying to fetch a previously failed transaction.
+const FAILED_FETCH_RETRY_INTERVAL_S: u64 = 10;
 /// The interval in seconds in which to print metrics.
 const METRICS_PRINT_INTERVAL_S: u64 = 10;
 
@@ -302,13 +304,27 @@ impl L1Fetcher {
         tokio::spawn({
             async move {
                 while let Some(hash) = hash_rx.recv().await {
-                    let Ok(Some(tx)) = L1Fetcher::retry_call(
-                        || provider.get_transaction(hash),
-                        L1FetchError::GetTx,
-                    )
-                    .await
-                    else {
-                        continue;
+                    let tx = loop {
+                        match L1Fetcher::retry_call(
+                            || provider.get_transaction(hash),
+                            L1FetchError::GetTx,
+                        )
+                        .await
+                        {
+                            Ok(Some(tx)) => {
+                                break tx;
+                            }
+                            _ => {
+                                tracing::error!(
+                                    "failed to get transaction for hash: {}, retrying in a bit...",
+                                    hash
+                                );
+                                tokio::time::sleep(Duration::from_secs(
+                                    FAILED_FETCH_RETRY_INTERVAL_S,
+                                ))
+                                .await;
+                            }
+                        };
                     };
 
                     if let Some(current_block) = tx.block_number {
