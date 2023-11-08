@@ -10,6 +10,7 @@ members = ["state-reconstruct-fetcher"]
 [dependencies]
 async-trait = "0.1.74"
 blake2 = "0.10.6"
+chrono = "0.4.31"
 clap = { version = "4.4.7", features = ["derive", "env"] }
 ethers = "1.0.2"
 eyre = "0.6.8"

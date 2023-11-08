@@ -16,6 +16,7 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
+use processor::snapshot::SnapshotExporter;
 use state_reconstruct_fetcher::{
     constants::storage,
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
@@ -52,6 +53,7 @@ fn start_logger(default_level: LevelFilter) {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
     start_logger(LevelFilter::INFO);
 
@@ -149,6 +151,29 @@ async fn main() -> Result<()> {
             } else {
                 println!("{result}");
             }
+        }
+        Command::ExportSnapshot {
+            l1_fetcher_options,
+            file,
+        } => {
+            let fetcher_options = L1FetcherOptions {
+                http_url: l1_fetcher_options.http_url,
+                start_block: l1_fetcher_options.start_block,
+                block_step: l1_fetcher_options.block_step,
+                block_count: l1_fetcher_options.block_count,
+                disable_polling: l1_fetcher_options.disable_polling,
+            };
+
+            let fetcher = L1Fetcher::new(fetcher_options, None)?;
+            let processor = SnapshotExporter::new(file);
+
+            let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+            let processor_handle = tokio::spawn(async move {
+                processor.run(rx).await;
+            });
+
+            fetcher.run(tx).await?;
+            processor_handle.await?;
         }
     }
 
