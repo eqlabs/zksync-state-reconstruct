@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
 
+mod bytecode;
 mod types;
 
 use async_trait::async_trait;
@@ -13,7 +14,7 @@ use state_reconstruct_fetcher::{
 };
 use tokio::sync::mpsc;
 
-use self::types::{SnapshotStorageLog, StorageKey, StorageValue};
+use self::types::{SnapshotFactoryDependency, SnapshotStorageLog, StorageKey, StorageValue};
 use super::Processor;
 use crate::processor::snapshot::types::MiniblockNumber;
 
@@ -22,6 +23,7 @@ const DEFAULT_EXPORT_PATH: &str = "snapshot_export";
 
 pub struct SnapshotExporter {
     storage_log_entries: HashMap<StorageKey, SnapshotStorageLog>,
+    factory_deps: Vec<SnapshotFactoryDependency>,
     index_to_key_map: IndexSet<U256>,
     path: PathBuf,
 }
@@ -45,6 +47,7 @@ impl SnapshotExporter {
 
         Self {
             storage_log_entries,
+            factory_deps: vec![],
             index_to_key_map,
             path,
         }
@@ -103,9 +106,13 @@ impl Processor for SnapshotExporter {
                     .and_modify(|log| log.value = value);
             }
 
-            // TODO: We need to index these by hash.
             // Factory dependencies.
-            // for dep in &block.factory_deps {}
+            for dep in block.factory_deps {
+                self.factory_deps.push(SnapshotFactoryDependency {
+                    bytecode_hash: bytecode::hash_bytecode(&dep),
+                    bytecode: dep,
+                });
+            }
         }
 
         fs::write(&self.path, self.to_string()).expect("failed to export snapshot");
