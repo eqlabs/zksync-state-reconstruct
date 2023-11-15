@@ -4,6 +4,7 @@ use std::fmt;
 
 use chrono::{offset::Utc, DateTime};
 use ethers::types::{H256, U256, U64};
+use serde::{Deserialize, Serialize};
 
 pub type L1BatchNumber = U64;
 pub type MiniblockNumber = U64;
@@ -11,7 +12,7 @@ pub type MiniblockNumber = U64;
 pub type StorageKey = U256;
 pub type StorageValue = H256;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotHeader {
     pub l1_batch_number: L1BatchNumber,
     pub miniblock_number: MiniblockNumber,
@@ -22,21 +23,21 @@ pub struct SnapshotHeader {
     pub generated_at: DateTime<Utc>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotChunkMetadata {
     pub key: SnapshotStorageKey,
     /// Can be either a gs or filesystem path
     pub filepath: String,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageKey {
     pub l1_batch_number: L1BatchNumber,
     /// Chunks with smaller id's must contain storage_logs with smaller hashed_keys
     pub chunk_id: u64,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotChunk {
     // Sorted by hashed_keys interpreted as little-endian numbers
     pub storage_logs: Vec<SnapshotStorageLog>,
@@ -44,7 +45,7 @@ pub struct SnapshotChunk {
 }
 
 // "most recent" for each key together with info when the key was first used
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageLog {
     pub key: StorageKey,
     pub value: StorageValue,
@@ -67,7 +68,7 @@ impl fmt::Display for SnapshotStorageLog {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotFactoryDependency {
     pub bytecode_hash: H256,
     pub bytecode: Vec<u8>,

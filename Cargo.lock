@@ -2609,6 +2609,8 @@ dependencies = [
  "glob",
  "libc",
  "libz-sys",
+ "lz4-sys",
+ "zstd-sys",
 ]
 
 [[package]]
@@ -2663,6 +2665,16 @@ name = "log"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
+
+[[package]]
+name = "lz4-sys"
+version = "1.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57d27b317e207b10f69f5e75494119e391a96f48861ae870d1da6edac98ca900"
+dependencies = [
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "match_cfg"
@@ -4657,6 +4669,7 @@ name = "state-reconstruct"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bincode",
  "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono",
  "clap 4.4.7",
@@ -4664,9 +4677,11 @@ dependencies = [
  "eyre",
  "hex",
  "indexmap 2.0.2",
+ "rocksdb",
  "serde",
  "serde_json",
  "state-reconstruct-fetcher",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -5926,4 +5941,14 @@ dependencies = [
  "vlog",
  "zk_evm",
  "zksync_basic_types",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.0.9+zstd.1.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e16efa8a874a0481a574084d34cc26fdb3b99627480f785888deb6386506656"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
