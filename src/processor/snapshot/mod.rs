@@ -1,74 +1,49 @@
-use std::{collections::HashMap, fmt, fs, path::PathBuf, str::FromStr};
+use std::{fs, path::PathBuf, str::FromStr};
 
 mod bytecode;
+mod database;
 mod types;
 
 use async_trait::async_trait;
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
-use indexmap::IndexSet;
 use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
     types::CommitBlockInfoV1,
 };
 use tokio::sync::mpsc;
 
-use self::types::{SnapshotFactoryDependency, SnapshotStorageLog, StorageKey, StorageValue};
+use self::{
+    database::{DatabaseError, SnapshotDB},
+    types::{SnapshotFactoryDependency, SnapshotStorageLog},
+};
 use super::Processor;
-use crate::processor::snapshot::types::MiniblockNumber;
+use crate::processor::snapshot::types::{MiniblockNumber, StorageValue};
 
-// NOTE: What file extension to use?
-const DEFAULT_EXPORT_PATH: &str = "snapshot_export";
+const DEFAULT_DB_PATH: &str = "snapshot_db";
 
-pub struct SnapshotExporter {
-    storage_log_entries: HashMap<StorageKey, SnapshotStorageLog>,
-    factory_deps: Vec<SnapshotFactoryDependency>,
-    index_to_key_map: IndexSet<U256>,
-    path: PathBuf,
+pub struct SnapshotBuilder {
+    database: SnapshotDB,
 }
 
-impl SnapshotExporter {
-    pub fn new(path: Option<String>) -> Self {
-        let path = match path {
+impl SnapshotBuilder {
+    pub fn new(db_path: Option<String>) -> Self {
+        let db_path = match db_path {
             Some(p) => PathBuf::from(p),
-            None => PathBuf::from(DEFAULT_EXPORT_PATH),
+            None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let mut index_to_key_map = IndexSet::new();
-        let mut storage_log_entries = HashMap::new();
+        let mut database = SnapshotDB::new(db_path).unwrap();
 
-        reconstruct_genesis_state(
-            &mut storage_log_entries,
-            &mut index_to_key_map,
-            storage::INITAL_STATE_PATH,
-        )
-        .unwrap();
+        reconstruct_genesis_state(&mut database, storage::INITAL_STATE_PATH).unwrap();
 
-        Self {
-            storage_log_entries,
-            factory_deps: vec![],
-            index_to_key_map,
-            path,
-        }
-    }
-}
-
-impl fmt::Display for SnapshotExporter {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::new();
-
-        for entry in &self.storage_log_entries {
-            s.push_str(&entry.1.to_string());
-            s.push('\n');
-        }
-
-        write!(f, "{s}")
+        Self { database }
     }
 }
 
 #[async_trait]
-impl Processor for SnapshotExporter {
+impl Processor for SnapshotBuilder {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
         // TODO: Send from fetcher.
         let l1_block_number = U64::from(0);
@@ -76,57 +51,54 @@ impl Processor for SnapshotExporter {
         while let Some(block) = rx.recv().await {
             // Initial calldata.
             for (key, value) in &block.initial_storage_changes {
-                let key = U256::from_little_endian(key);
-                let value = H256::from(value);
-                self.index_to_key_map.insert(key);
-
-                let log = self
-                    .storage_log_entries
-                    .entry(key)
-                    .or_insert(SnapshotStorageLog {
-                        key,
-                        value: StorageValue::default(),
-                        // NOTE: This isn't stored in L1, can we procure it some other way?
-                        miniblock_number_of_initial_write: U64::from(0),
+                self.database
+                    .insert_storage_log(&SnapshotStorageLog {
+                        key: U256::from_little_endian(key),
+                        value: H256::from(value),
+                        miniblock_number_of_initial_write: miniblock_number,
                         l1_batch_number_of_initial_write: l1_block_number,
                         enumeration_index: 0,
-                    });
-                log.value = value;
+                    })
+                    .expect("failed to insert storage_log_entry");
             }
 
             // Repeated calldata.
             for (index, value) in &block.repeated_storage_changes {
                 let index = usize::try_from(*index).expect("truncation failed");
-                // Index is 1-based so we subtract 1.
-                let key = *self.index_to_key_map.get_index(index - 1).unwrap();
-                let value = H256::from(value);
+                match self.database.update_storage_log_value(index as u64, value) {
+                    Ok(_) => (),
+                    Err(_) => {
+                        let max_idx = self
+                            .database
+                            .get_last_repeated_key_index()
+                            .expect("failed to get latest repeated key index");
+                        tracing::error!(
+                            "failed to find key with index {}, last repeated key index: {}",
+                            index,
+                            max_idx
+                        );
+                    }
+                };
 
-                self.storage_log_entries
-                    .entry(key)
-                    .and_modify(|log| log.value = value);
+                //.expect("failed to update storage_log_value");
             }
 
             // Factory dependencies.
             for dep in block.factory_deps {
-                self.factory_deps.push(SnapshotFactoryDependency {
-                    bytecode_hash: bytecode::hash_bytecode(&dep),
-                    bytecode: dep,
-                });
+                self.database
+                    .insert_factory_dep(&SnapshotFactoryDependency {
+                        bytecode_hash: bytecode::hash_bytecode(&dep),
+                        bytecode: dep,
+                    })
+                    .expect("failed to save factory dep");
             }
         }
-
-        fs::write(&self.path, self.to_string()).expect("failed to export snapshot");
-        tracing::info!("Successfully exported snapshot to {}", self.path.display());
     }
 }
 
 // TODO: Can this be made somewhat generic?
 /// Attempts to reconstruct the genesis state from a CSV file.
-fn reconstruct_genesis_state(
-    storage_log_entries: &mut HashMap<U256, SnapshotStorageLog>,
-    index_to_key: &mut IndexSet<U256>,
-    path: &str,
-) -> Result<()> {
+fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
         input
             .strip_prefix("E'\\\\x")
@@ -216,18 +188,17 @@ fn reconstruct_genesis_state(
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
 
-        let log = storage_log_entries
-            .entry(key)
-            .or_insert(SnapshotStorageLog {
+        if let None = database.get_storage_log(&derived_key)? {
+            database.insert_storage_log(&SnapshotStorageLog {
                 key,
                 value: StorageValue::default(),
                 miniblock_number_of_initial_write: MiniblockNumber::from(miniblock_number),
                 l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
                 enumeration_index: 0,
-            });
-
-        log.value = value;
-        index_to_key.insert(key);
+            })?;
+        } else {
+            database.update_storage_log_entry(&derived_key, value.as_bytes())?;
+        }
     }
 
     Ok(())
@@ -243,3 +214,5 @@ fn derive_final_address_for_params(address: &Address, key: &U256) -> [u8; 32] {
 
     result
 }
+
+// TODO: SnapshotExporter which iterates over the SnapshotDB and exports snapshot chunks.
