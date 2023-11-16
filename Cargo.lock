@@ -4631,6 +4631,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "blake2 0.10.6",
+ "chrono",
  "clap 4.4.7",
  "ethers",
  "eyre",

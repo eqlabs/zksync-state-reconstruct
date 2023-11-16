@@ -72,6 +72,14 @@ pub enum Command {
         #[arg(short, long, env = "ZK_SYNC_DB_PATH")]
         db_path: Option<String>,
     },
+
+    /// Testing.
+    ExportSnapshot {
+        #[command(flatten)]
+        l1_fetcher_options: L1FetcherOptions,
+        /// The path of the file to export the snapshot to.
+        file: Option<String>,
+    },
 }
 
 #[derive(Parser)]
