@@ -295,7 +295,7 @@ impl L1Fetcher {
     fn spawn_tx_handler(
         &self,
         mut hash_rx: mpsc::Receiver<H256>,
-        calldata_tx: mpsc::Sender<Bytes>,
+        l1_tx_tx: mpsc::Sender<Transaction>,
         mut last_block: u64,
     ) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
@@ -336,7 +336,7 @@ impl L1Fetcher {
                         }
                     }
 
-                    calldata_tx.send(tx.input).await.unwrap();
+                    l1_tx_tx.send(tx).await.unwrap();
                 }
             }
         })
@@ -344,7 +344,7 @@ impl L1Fetcher {
 
     fn spawn_parsing_handler(
         &self,
-        mut calldata_rx: mpsc::Receiver<Bytes>,
+        mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlockInfoV1>,
     ) -> Result<tokio::task::JoinHandle<()>> {
         let metrics = self.metrics.clone();
@@ -352,8 +352,9 @@ impl L1Fetcher {
 
         Ok(tokio::spawn({
             async move {
-                while let Some(calldata) = calldata_rx.recv().await {
-                    let blocks = match parse_calldata(&function, &calldata) {
+                while let Some(tx) = l1_tx_rx.recv().await {
+                    let block_number = tx.block_number.map(|v| v.as_u64());
+                    let blocks = match parse_calldata(block_number, &function, &tx.input) {
                         Ok(blks) => blks,
                         Err(e) => {
                             tracing::error!("failed to parse calldata: {e}");
@@ -391,6 +392,7 @@ impl L1Fetcher {
 }
 
 pub fn parse_calldata(
+    l1_block_number: Option<u64>,
     commit_blocks_fn: &Function,
     calldata: &[u8],
 ) -> Result<Vec<CommitBlockInfoV1>> {
@@ -435,7 +437,12 @@ pub fn parse_calldata(
     // TODO: What to do here?
     // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
 
-    parse_commit_block_info(&new_blocks_data)
+    // Supplement every CommitBlockInfoV1 element with L1 block number information.
+    parse_commit_block_info(&new_blocks_data).map(|mut vec| {
+        vec.iter_mut()
+            .for_each(|e| e.l1_block_number = l1_block_number);
+        vec
+    })
 }
 
 fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> {

@@ -27,6 +27,9 @@ pub enum ParseError {
 /// Data needed to commit new block
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommitBlockInfoV1 {
+    /// L1 block number.
+    #[serde(skip_serializing)]
+    pub l1_block_number: Option<u64>,
     /// L2 block number.
     pub block_number: u64,
     /// Unix timestamp denoting the start of the block execution.
@@ -98,6 +101,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
         );
 
         let mut blk = CommitBlockInfoV1 {
+            l1_block_number: None,
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,
