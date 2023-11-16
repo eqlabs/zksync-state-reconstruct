@@ -67,8 +67,7 @@ impl fmt::Display for SnapshotExporter {
 #[async_trait]
 impl Processor for SnapshotExporter {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
-        // TODO: Send these from fetcher.
-        let miniblock_number = U64::from(0);
+        // TODO: Send from fetcher.
         let l1_block_number = U64::from(0);
 
         while let Some(block) = rx.recv().await {
@@ -84,7 +83,8 @@ impl Processor for SnapshotExporter {
                     .or_insert(SnapshotStorageLog {
                         key,
                         value: StorageValue::default(),
-                        miniblock_number_of_initial_write: miniblock_number,
+                        // NOTE: This isn't stored in L1, can we procure it some other way?
+                        miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: l1_block_number,
                         enumeration_index: 0,
                     });
