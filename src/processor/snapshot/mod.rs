@@ -15,7 +15,7 @@ use state_reconstruct_fetcher::{
 use tokio::sync::mpsc;
 
 use self::{
-    database::{DatabaseError, SnapshotDB},
+    database::SnapshotDB,
     types::{SnapshotFactoryDependency, SnapshotStorageLog},
 };
 use super::Processor;
