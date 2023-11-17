@@ -42,22 +42,24 @@ impl SnapshotDB {
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
         let metadata = self.db.cf_handle(METADATA).unwrap();
-        Ok(match self.db.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
-            Some(idx_bytes) => u64::from_be_bytes([
-                idx_bytes[0],
-                idx_bytes[1],
-                idx_bytes[2],
-                idx_bytes[3],
-                idx_bytes[4],
-                idx_bytes[5],
-                idx_bytes[6],
-                idx_bytes[7],
-            ]),
-            None => {
+        Ok(
+            if let Some(idx_bytes) = self.db.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
+                u64::from_be_bytes([
+                    idx_bytes[0],
+                    idx_bytes[1],
+                    idx_bytes[2],
+                    idx_bytes[3],
+                    idx_bytes[4],
+                    idx_bytes[5],
+                    idx_bytes[6],
+                    idx_bytes[7],
+                ])
+            } else {
                 self.db
                     .put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(1))?;
                 0
-            }
+            },
+        )
         })
     }
 
