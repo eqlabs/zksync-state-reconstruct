@@ -18,8 +18,8 @@ jobs:
         checks: [
           fmt --all --check,
           check --all-targets --all-features,
-          clippy --all-targets --all-features,
-          test
+          clippy --all-targets --all-features -- -D warnings,
+          test --all-targets --all-features
         ]
     steps:
       - uses: actions/checkout@v4
