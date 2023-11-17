@@ -41,7 +41,7 @@ impl SnapshotDB {
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        let metadata = self.db.cf_handle(METADATA).unwrap();
+        let metadata = self.db.cf_handle(METADATA)?;
         Ok(
             if let Some(idx_bytes) = self.db.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
                 u64::from_be_bytes([
