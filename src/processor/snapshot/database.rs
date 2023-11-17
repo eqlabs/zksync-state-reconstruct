@@ -1,4 +1,4 @@
-use std::{convert::TryFrom, path::PathBuf};
+use std::{convert::{Into,TryFrom}, path::PathBuf};
 
 use ethers::types::H256;
 use eyre::Result;
@@ -66,7 +66,7 @@ impl SnapshotDB {
         let metadata = self.db.cf_handle(METADATA).unwrap();
         self.db
             .put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn get_storage_log(&self, key: &[u8]) -> Result<Option<SnapshotStorageLog>> {
@@ -74,7 +74,7 @@ impl SnapshotDB {
         self.db
             .get_cf(storage_logs, key)
             .map(|v| v.map(|v| bincode::deserialize(&v).unwrap()))
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn insert_storage_log(&self, storage_log_entry: &SnapshotStorageLog) -> Result<()> {
@@ -92,7 +92,7 @@ impl SnapshotDB {
 
         self.db
             .put_cf(storage_logs, key, bincode::serialize(storage_log_entry)?)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
@@ -110,7 +110,7 @@ impl SnapshotDB {
         entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
         self.db
             .put_cf(storage_logs, key, bincode::serialize(&entry)?)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn update_storage_log_entry(&self, key: &[u8], value: &[u8]) -> Result<()> {
@@ -120,13 +120,13 @@ impl SnapshotDB {
         entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
         self.db
             .put_cf(storage_logs, key, bincode::serialize(&entry)?)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 
     pub fn insert_factory_dep(&self, fdep: &SnapshotFactoryDependency) -> Result<()> {
         let factory_deps = self.db.cf_handle(FACTORY_DEPS).unwrap();
         self.db
             .put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
-            .map_err(|e| e.into())
+            .map_err(Into::into)
     }
 }
