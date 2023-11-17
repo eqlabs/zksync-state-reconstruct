@@ -518,6 +518,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake2"
+version = "0.10.6"
+source = "git+https://github.com/RustCrypto/hashes.git?rev=1f727ce37ff40fa0cce84eb8543a45bdd3ca4a4e#1f727ce37ff40fa0cce84eb8543a45bdd3ca4a4e"
+dependencies = [
+ "digest 0.10.7",
+]
+
+[[package]]
 name = "blake2-rfc_bellman_edition"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -875,7 +883,7 @@ dependencies = [
  "k256",
  "lazy_static",
  "serde",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -892,7 +900,7 @@ dependencies = [
  "hmac 0.12.1",
  "pbkdf2 0.11.0",
  "rand 0.8.5",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -905,15 +913,15 @@ dependencies = [
  "base58check",
  "base64 0.12.3",
  "bech32",
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "digest 0.10.7",
  "generic-array 0.14.7",
  "hex",
  "ripemd",
  "serde",
  "serde_derive",
- "sha2 0.10.6",
- "sha3 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -1441,8 +1449,8 @@ dependencies = [
  "scrypt 0.10.0",
  "serde",
  "serde_json",
- "sha2 0.10.6",
- "sha3 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "uuid 0.8.2",
 ]
@@ -1459,7 +1467,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "sha3 0.10.6",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
  "uint",
 ]
@@ -1731,7 +1739,7 @@ dependencies = [
  "ethers-core",
  "hex",
  "rand 0.8.5",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror",
 ]
 
@@ -2542,8 +2550,8 @@ dependencies = [
  "cfg-if 1.0.0",
  "ecdsa",
  "elliptic-curve",
- "sha2 0.10.6",
- "sha3 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3286,7 +3294,7 @@ dependencies = [
  "digest 0.10.7",
  "hmac 0.12.1",
  "password-hash 0.4.2",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3343,7 +3351,7 @@ checksum = "1df74e9e7ec4053ceb980e7c0c8bd3594e977fde1af91daba9c928e8e8c6708d"
 dependencies = [
  "once_cell",
  "pest",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3899,7 +3907,7 @@ source = "git+https://github.com/matter-labs/rescue-poseidon#d059b5042df5ed80e15
 dependencies = [
  "addchain",
  "arrayvec 0.7.4",
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder",
  "franklin-crypto",
  "num-bigint 0.3.3",
@@ -4163,7 +4171,7 @@ dependencies = [
  "hmac 0.12.1",
  "pbkdf2 0.11.0",
  "salsa20 0.10.2",
- "sha2 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -4507,6 +4515,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha2"
+version = "0.10.6"
+source = "git+https://github.com/RustCrypto/hashes.git?rev=1731ced4a116d61ba9dc6ee6d0f38fb8102e357a#1731ced4a116d61ba9dc6ee6d0f38fb8102e357a"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cpufeatures",
+ "digest 0.10.7",
+]
+
+[[package]]
 name = "sha3"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4523,6 +4541,15 @@ name = "sha3"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdf0c33fae925bdc080598b84bc15c55e7b9a4a43b3c704da051f977469691c9"
+dependencies = [
+ "digest 0.10.7",
+ "keccak",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.6"
+source = "git+https://github.com/RustCrypto/hashes.git?rev=7a187e934c1f6c68e4b4e5cf37541b7a0d64d303#7a187e934c1f6c68e4b4e5cf37541b7a0d64d303"
 dependencies = [
  "digest 0.10.7",
  "keccak",
@@ -4630,7 +4657,7 @@ name = "state-reconstruct"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono",
  "clap 4.4.7",
  "ethers",
@@ -4643,6 +4670,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git)",
  "zksync_merkle_tree",
 ]
 
@@ -4784,11 +4812,11 @@ dependencies = [
  "rand 0.4.6",
  "rescue_poseidon",
  "serde",
- "sha2 0.10.6",
- "sha3 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec",
  "zk_evm",
- "zkevm_opcode_defs",
+ "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git?branch=v1.3.2)",
 ]
 
 [[package]]
@@ -5665,7 +5693,7 @@ dependencies = [
  "serde_json",
  "static_assertions",
  "zk_evm_abstractions",
- "zkevm_opcode_defs",
+ "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git?branch=v1.3.2)",
 ]
 
 [[package]]
@@ -5676,7 +5704,7 @@ dependencies = [
  "anyhow",
  "serde",
  "static_assertions",
- "zkevm_opcode_defs",
+ "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git?branch=v1.3.2)",
 ]
 
 [[package]]
@@ -5691,11 +5719,11 @@ dependencies = [
  "nom",
  "num-bigint 0.4.4",
  "num-traits",
- "sha3 0.10.6",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec",
  "structopt",
  "thiserror",
- "zkevm_opcode_defs",
+ "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git?branch=v1.3.2)",
 ]
 
 [[package]]
@@ -5704,12 +5732,26 @@ version = "1.3.2"
 source = "git+https://github.com/matter-labs/era-zkevm_opcode_defs.git?branch=v1.3.2#c7ab62f4c60b27dfc690c3ab3efb5fff1ded1a25"
 dependencies = [
  "bitflags 2.4.0",
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "ethereum-types 0.14.1",
  "k256",
  "lazy_static",
- "sha2 0.10.6",
- "sha3 0.10.6",
+ "sha2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sha3 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "zkevm_opcode_defs"
+version = "1.3.2"
+source = "git+https://github.com/matter-labs/era-zkevm_opcode_defs.git#dffacadeccdfdbff4bc124d44c595c4a6eae5013"
+dependencies = [
+ "bitflags 2.4.0",
+ "blake2 0.10.6 (git+https://github.com/RustCrypto/hashes.git?rev=1f727ce37ff40fa0cce84eb8543a45bdd3ca4a4e)",
+ "ethereum-types 0.14.1",
+ "k256",
+ "lazy_static",
+ "sha2 0.10.6 (git+https://github.com/RustCrypto/hashes.git?rev=1731ced4a116d61ba9dc6ee6d0f38fb8102e357a)",
+ "sha3 0.10.6 (git+https://github.com/RustCrypto/hashes.git?rev=7a187e934c1f6c68e4b4e5cf37541b7a0d64d303)",
 ]
 
 [[package]]
@@ -5788,7 +5830,7 @@ version = "0.1.0"
 source = "git+https://github.com/matter-labs/zksync-era.git#7e231887d3f0585dcccae730bc6b223dd96bd668"
 dependencies = [
  "base64 0.13.1",
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex",
  "once_cell",
  "serde",
@@ -5840,7 +5882,7 @@ name = "zksync_types"
 version = "0.1.0"
 source = "git+https://github.com/matter-labs/zksync-era.git#7e231887d3f0585dcccae730bc6b223dd96bd668"
 dependencies = [
- "blake2 0.10.6",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono",
  "codegen 0.1.0",
  "ethereum-types 0.12.1",
