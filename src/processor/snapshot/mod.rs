@@ -189,7 +189,7 @@ fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
 
-        if let None = database.get_storage_log(&derived_key)? {
+        if database.get_storage_log(&derived_key)?.is_none() {
             database.insert_storage_log(&SnapshotStorageLog {
                 key,
                 value: StorageValue::default(),
