@@ -65,19 +65,20 @@ impl Processor for SnapshotBuilder {
             // Repeated calldata.
             for (index, value) in &block.repeated_storage_changes {
                 let index = usize::try_from(*index).expect("truncation failed");
-                match self.database.update_storage_log_value(index as u64, value) {
-                    Ok(_) => (),
-                    Err(_) => {
-                        let max_idx = self
-                            .database
-                            .get_last_repeated_key_index()
-                            .expect("failed to get latest repeated key index");
-                        tracing::error!(
-                            "failed to find key with index {}, last repeated key index: {}",
-                            index,
-                            max_idx
-                        );
-                    }
+                if self
+                    .database
+                    .update_storage_log_value(index as u64, value)
+                    .is_err()
+                {
+                    let max_idx = self
+                        .database
+                        .get_last_repeated_key_index()
+                        .expect("failed to get latest repeated key index");
+                    tracing::error!(
+                        "failed to find key with index {}, last repeated key index: {}",
+                        index,
+                        max_idx
+                    );
                 };
 
                 //.expect("failed to update storage_log_value");
