@@ -45,7 +45,8 @@ impl SnapshotBuilder {
 #[async_trait]
 impl Processor for SnapshotBuilder {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
-        // TODO: Send from fetcher.
+        // TODO: Send these from fetcher.
+        let miniblock_number = U64::from(0);
         let l1_block_number = U64::from(0);
 
         while let Some(block) = rx.recv().await {

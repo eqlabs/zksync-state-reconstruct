@@ -44,7 +44,7 @@ impl SnapshotDB {
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        let metadata = self.db.cf_handle(METADATA)?;
+        let metadata = self.db.cf_handle(METADATA).unwrap();
         Ok(
             if let Some(idx_bytes) = self.db.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
                 u64::from_be_bytes([
@@ -63,7 +63,6 @@ impl SnapshotDB {
                 0
             },
         )
-        })
     }
 
     pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
@@ -71,13 +70,6 @@ impl SnapshotDB {
         self.db
             .put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
             .map_err(Into::into)
-    }
-
-    pub fn get_index_key(&self, idx: u64) -> Result<Option<Vec<u8>>> {
-        let index_to_key_map = self.db.cf_handle(INDEX_TO_KEY_MAP).unwrap();
-        self.db
-            .get_cf(index_to_key_map, idx.to_be_bytes())
-            .map_err(|e| e.into())
     }
 
     pub fn get_storage_log(&self, key: &[u8]) -> Result<Option<SnapshotStorageLog>> {
@@ -125,7 +117,6 @@ impl SnapshotDB {
     }
 
     pub fn update_storage_log_entry(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        let index_to_key_map = self.db.cf_handle(INDEX_TO_KEY_MAP).unwrap();
         let storage_logs = self.db.cf_handle(STORAGE_LOGS).unwrap();
         let entry_bs = self.db.get_cf(storage_logs, key)?.unwrap();
         let mut entry: SnapshotStorageLog = bincode::deserialize(&entry_bs)?;
