@@ -45,10 +45,6 @@ impl SnapshotBuilder {
 #[async_trait]
 impl Processor for SnapshotBuilder {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
-        // TODO: Send these from fetcher.
-        let miniblock_number = U64::from(0);
-        let l1_block_number = U64::from(0);
-
         while let Some(block) = rx.recv().await {
             // Initial calldata.
             for (key, value) in &block.initial_storage_changes {
@@ -56,8 +52,10 @@ impl Processor for SnapshotBuilder {
                     .insert_storage_log(&SnapshotStorageLog {
                         key: U256::from_little_endian(key),
                         value: H256::from(value),
-                        miniblock_number_of_initial_write: miniblock_number,
-                        l1_batch_number_of_initial_write: l1_block_number,
+                        miniblock_number_of_initial_write: U64::from(0),
+                        l1_batch_number_of_initial_write: U64::from(
+                            block.l1_block_number.unwrap_or(0),
+                        ),
                         enumeration_index: 0,
                     })
                     .expect("failed to insert storage_log_entry");
@@ -81,8 +79,6 @@ impl Processor for SnapshotBuilder {
                         max_idx
                     );
                 };
-
-                //.expect("failed to update storage_log_value");
             }
 
             // Factory dependencies.
