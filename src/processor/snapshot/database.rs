@@ -24,8 +24,14 @@ pub enum DatabaseError {
     NoSuchKey,
 }
 
-pub struct SnapshotDB {
-    db: DB,
+pub struct SnapshotDB(DB);
+
+impl Deref for SnapshotDB {
+    type Target = DB;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl SnapshotDB {
