@@ -1,5 +1,6 @@
 use std::{
     convert::{Into, TryFrom},
+    ops::Deref,
     path::PathBuf,
 };
 
@@ -46,13 +47,15 @@ impl SnapshotDB {
             vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
         )?;
 
-        Ok(Self { db })
+        Ok(Self(db))
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        let metadata = self.db.cf_handle(METADATA).unwrap();
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let metadata = self.cf_handle(METADATA).unwrap();
         Ok(
-            if let Some(idx_bytes) = self.db.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
+            if let Some(idx_bytes) = self.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
                 u64::from_be_bytes([
                     idx_bytes[0],
                     idx_bytes[1],
@@ -64,31 +67,34 @@ impl SnapshotDB {
                     idx_bytes[7],
                 ])
             } else {
-                self.db
-                    .put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(1))?;
+                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(1))?;
                 0
             },
         )
     }
 
     pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
-        let metadata = self.db.cf_handle(METADATA).unwrap();
-        self.db
-            .put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let metadata = self.cf_handle(METADATA).unwrap();
+        self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
             .map_err(Into::into)
     }
 
     pub fn get_storage_log(&self, key: &[u8]) -> Result<Option<SnapshotStorageLog>> {
-        let storage_logs = self.db.cf_handle(STORAGE_LOGS).unwrap();
-        self.db
-            .get_cf(storage_logs, key)
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        self.get_cf(storage_logs, key)
             .map(|v| v.map(|v| bincode::deserialize(&v).unwrap()))
             .map_err(Into::into)
     }
 
     pub fn insert_storage_log(&self, storage_log_entry: &SnapshotStorageLog) -> Result<()> {
-        let index_to_key_map = self.db.cf_handle(INDEX_TO_KEY_MAP).unwrap();
-        let storage_logs = self.db.cf_handle(STORAGE_LOGS).unwrap();
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
+        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
 
         let mut key: [u8; 32] = [0; 32];
         storage_log_entry.key.to_big_endian(&mut key);
@@ -96,46 +102,48 @@ impl SnapshotDB {
         // XXX: These should really be inside a transaction...
         let idx = self.get_last_repeated_key_index()? + 1;
 
-        self.db.put_cf(index_to_key_map, idx.to_be_bytes(), key)?;
+        self.put_cf(index_to_key_map, idx.to_be_bytes(), key)?;
         self.set_last_repeated_key_index(idx)?;
 
-        self.db
-            .put_cf(storage_logs, key, bincode::serialize(storage_log_entry)?)
+        self.put_cf(storage_logs, key, bincode::serialize(storage_log_entry)?)
             .map_err(Into::into)
     }
 
     pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
-        let index_to_key_map = self.db.cf_handle(INDEX_TO_KEY_MAP).unwrap();
-        let storage_logs = self.db.cf_handle(STORAGE_LOGS).unwrap();
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
+        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
 
-        let key: Vec<u8> = match self.db.get_cf(index_to_key_map, key_idx.to_be_bytes())? {
+        let key: Vec<u8> = match self.get_cf(index_to_key_map, key_idx.to_be_bytes())? {
             Some(k) => k,
             None => return Err(DatabaseError::NoSuchKey.into()),
         };
 
         // XXX: These should really be inside a transaction...
-        let entry_bs = self.db.get_cf(storage_logs, &key)?.unwrap();
+        let entry_bs = self.get_cf(storage_logs, &key)?.unwrap();
         let mut entry: SnapshotStorageLog = bincode::deserialize(&entry_bs)?;
         entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
-        self.db
-            .put_cf(storage_logs, key, bincode::serialize(&entry)?)
+        self.put_cf(storage_logs, key, bincode::serialize(&entry)?)
             .map_err(Into::into)
     }
 
     pub fn update_storage_log_entry(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        let storage_logs = self.db.cf_handle(STORAGE_LOGS).unwrap();
-        let entry_bs = self.db.get_cf(storage_logs, key)?.unwrap();
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let entry_bs = self.get_cf(storage_logs, key)?.unwrap();
         let mut entry: SnapshotStorageLog = bincode::deserialize(&entry_bs)?;
         entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
-        self.db
-            .put_cf(storage_logs, key, bincode::serialize(&entry)?)
+        self.put_cf(storage_logs, key, bincode::serialize(&entry)?)
             .map_err(Into::into)
     }
 
     pub fn insert_factory_dep(&self, fdep: &SnapshotFactoryDependency) -> Result<()> {
-        let factory_deps = self.db.cf_handle(FACTORY_DEPS).unwrap();
-        self.db
-            .put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let factory_deps = self.cf_handle(FACTORY_DEPS).unwrap();
+        self.put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
             .map_err(Into::into)
     }
 }
