@@ -17,9 +17,9 @@ impl fmt::Display for RootHashQuery {
     }
 }
 
-pub struct QueryTree<'a>(MerkleTree<'a, RocksDBWrapper>);
+pub struct QueryTree(MerkleTree<RocksDBWrapper>);
 
-impl QueryTree<'static> {
+impl QueryTree {
     pub fn new(db_path: &Path) -> Self {
         assert!(db_path.exists());
 

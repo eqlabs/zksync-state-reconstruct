@@ -9,12 +9,12 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use super::RootHash;
 
-pub struct TreeWrapper<'a> {
-    tree: MerkleTree<'a, RocksDBWrapper>,
+pub struct TreeWrapper {
+    tree: MerkleTree<RocksDBWrapper>,
     pub index_to_key_map: IndexSet<U256>,
 }
 
-impl TreeWrapper<'static> {
+impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
     pub fn new(db_path: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
         let db = RocksDBWrapper::new(db_path);

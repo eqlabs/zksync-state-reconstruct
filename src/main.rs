@@ -16,7 +16,7 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::SnapshotExporter;
+use processor::snapshot::SnapshotBuilder;
 use state_reconstruct_fetcher::{
     constants::storage,
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
             };
 
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
-            let processor = SnapshotExporter::new(file);
+            let processor = SnapshotBuilder::new(file);
 
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
             let processor_handle = tokio::spawn(async move {

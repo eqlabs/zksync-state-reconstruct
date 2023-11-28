@@ -16,16 +16,16 @@ use super::Processor;
 
 pub type RootHash = H256;
 
-pub struct TreeProcessor<'a> {
+pub struct TreeProcessor {
     /// The path to the directory in which database files and state snapshots will be written.
     db_path: PathBuf,
     /// The internal merkle tree.
-    tree: TreeWrapper<'a>,
+    tree: TreeWrapper,
     /// The stored state snapshot.
     snapshot: Arc<Mutex<StateSnapshot>>,
 }
 
-impl TreeProcessor<'static> {
+impl TreeProcessor {
     pub async fn new(db_path: PathBuf, snapshot: Arc<Mutex<StateSnapshot>>) -> Result<Self> {
         // If database directory already exists, we try to restore the latest state.
         // The state contains the last processed block and a mapping of index to key
@@ -60,7 +60,7 @@ impl TreeProcessor<'static> {
 }
 
 #[async_trait]
-impl Processor for TreeProcessor<'static> {
+impl Processor for TreeProcessor {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
         loop {
             if let Some(block) = rx.recv().await {
