@@ -255,6 +255,18 @@ impl SnapshotExporter {
         let mut header = SnapshotHeader::default();
         self.export_storage_logs(chunk_size, &mut header)?;
         self.export_factory_deps(&mut header)?;
+
+        let path = PathBuf::new()
+            .join(&self.basedir)
+            .join("snapshot-header.json");
+
+        let outfile = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(path)?;
+
+        serde_json::to_writer(outfile, &header)?;
+
         Ok(())
     }
 
