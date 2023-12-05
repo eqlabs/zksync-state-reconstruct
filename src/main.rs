@@ -16,7 +16,7 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::SnapshotBuilder;
+use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
 use state_reconstruct_fetcher::{
     constants::storage,
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
@@ -152,9 +152,9 @@ async fn main() -> Result<()> {
                 println!("{result}");
             }
         }
-        Command::ExportSnapshot {
+        Command::PrepareSnapshot {
             l1_fetcher_options,
-            file,
+            db_path,
         } => {
             let fetcher_options = L1FetcherOptions {
                 http_url: l1_fetcher_options.http_url,
@@ -165,7 +165,7 @@ async fn main() -> Result<()> {
             };
 
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
-            let processor = SnapshotBuilder::new(file);
+            let processor = SnapshotBuilder::new(db_path);
 
             let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
             let processor_handle = tokio::spawn(async move {
@@ -174,6 +174,14 @@ async fn main() -> Result<()> {
 
             fetcher.run(tx).await?;
             processor_handle.await?;
+        }
+        Command::ExportSnapshot {
+            db_path,
+            chunk_size,
+            directory,
+        } => {
+            let exporter = SnapshotExporter::new(&Path::new(&directory), db_path);
+            exporter.export_snapshot(chunk_size)?;
         }
     }
 

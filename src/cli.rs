@@ -1,6 +1,8 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use state_reconstruct_fetcher::constants::ethereum;
 
+use crate::processor::snapshot;
+
 #[derive(Args)]
 pub struct L1FetcherOptions {
     /// The Ethereum JSON-RPC HTTP URL to use.
@@ -73,12 +75,22 @@ pub enum Command {
         db_path: Option<String>,
     },
 
-    /// Testing.
-    ExportSnapshot {
+    PrepareSnapshot {
         #[command(flatten)]
         l1_fetcher_options: L1FetcherOptions,
-        /// The path of the file to export the snapshot to.
-        file: Option<String>,
+        /// The path to the storage solution.
+        #[arg(short, long)]
+        db_path: Option<String>,
+    },
+    ExportSnapshot {
+        /// The path to the storage solution.
+        #[arg(short, long, default_value = snapshot::DEFAULT_DB_PATH)]
+        db_path: Option<String>,
+        /// Number of storage logs to stuff into one chunk.
+        #[arg(short, long, default_value_t = 1_000_000)]
+        chunk_size: u64,
+        /// The directory to export the snapshot files to.
+        directory: String,
     },
 }
 

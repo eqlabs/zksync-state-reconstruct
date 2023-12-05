@@ -11,12 +11,14 @@ members = ["state-reconstruct-fetcher"]
 async-trait = "0.1.74"
 bincode = "1"
 blake2 = "0.10.6"
+bytes = "1.5"
 chrono = "0.4.31"
 clap = { version = "4.4.7", features = ["derive", "env"] }
 ethers = "1.0.2"
 eyre = "0.6.8"
 hex = "0.4.3"
 indexmap = { version = "2.0.2" }
+prost = "0.12"
 rocksdb = "0.21"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
@@ -27,3 +29,6 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
 zksync_merkle_tree = { git = "https://github.com/matter-labs/zksync-era.git" }
 zkevm_opcode_defs = { git = "https://github.com/matter-labs/era-zkevm_opcode_defs.git" }
+
+[build-dependencies]
+prost-build = "0.12"
