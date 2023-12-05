@@ -208,7 +208,7 @@ fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()
         if database.get_storage_log(&derived_key)?.is_none() {
             database.insert_storage_log(&mut SnapshotStorageLog {
                 key,
-                value: value,
+                value,
                 miniblock_number_of_initial_write: MiniblockNumber::from(miniblock_number),
                 l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
                 enumeration_index: 0,

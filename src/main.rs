@@ -180,7 +180,7 @@ async fn main() -> Result<()> {
             chunk_size,
             directory,
         } => {
-            let exporter = SnapshotExporter::new(&Path::new(&directory), db_path);
+            let exporter = SnapshotExporter::new(Path::new(&directory), db_path);
             exporter.export_snapshot(chunk_size)?;
         }
     }
