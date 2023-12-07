@@ -16,17 +16,18 @@ pub type StorageValue = H256;
 pub struct SnapshotHeader {
     pub l1_batch_number: L1BatchNumber,
     pub miniblock_number: MiniblockNumber,
-    /// Chunk metadata ordered by chunk_id
-    pub chunks: Vec<SnapshotChunkMetadata>,
-    // TODO:
-    // pub last_l1_batch_with_metadata: L1BatchWithMetadata,
+    // ordered by chunk_id
+    pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
+    pub factory_deps_filepath: String,
+    // Following `L1BatchWithMetadata` type doesn't have definition. Ignoring.
+    //pub last_l1_batch_with_metadata: L1BatchWithMetadata,
     pub generated_at: DateTime<Utc>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
-pub struct SnapshotChunkMetadata {
-    pub key: SnapshotStorageKey,
-    /// Can be either a gs or filesystem path
+pub struct SnapshotStorageLogsChunkMetadata {
+    pub chunk_id: u64,
+    // can be either a gs or filesystem path
     pub filepath: String,
 }
 

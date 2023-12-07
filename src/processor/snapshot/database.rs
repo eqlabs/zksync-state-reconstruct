@@ -11,9 +11,9 @@ use thiserror::Error;
 
 use super::types::{SnapshotFactoryDependency, SnapshotStorageLog};
 
-const STORAGE_LOGS: &str = "storage_logs";
-const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
-const FACTORY_DEPS: &str = "factory_deps";
+pub const STORAGE_LOGS: &str = "storage_logs";
+pub const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
+pub const FACTORY_DEPS: &str = "factory_deps";
 const METADATA: &str = "metadata";
 
 const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
@@ -45,6 +45,21 @@ impl SnapshotDB {
             &db_opts,
             db_path,
             vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
+        )?;
+
+        Ok(Self(db))
+    }
+
+    pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
+        let mut db_opts = Options::default();
+        db_opts.create_missing_column_families(true);
+        db_opts.create_if_missing(true);
+
+        let db = DB::open_cf_for_read_only(
+            &db_opts,
+            db_path,
+            vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
+            false,
         )?;
 
         Ok(Self(db))
@@ -90,7 +105,7 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
-    pub fn insert_storage_log(&self, storage_log_entry: &SnapshotStorageLog) -> Result<()> {
+    pub fn insert_storage_log(&self, storage_log_entry: &mut SnapshotStorageLog) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
@@ -101,6 +116,9 @@ impl SnapshotDB {
 
         // XXX: These should really be inside a transaction...
         let idx = self.get_last_repeated_key_index()? + 1;
+
+        // Update the enumeration index.
+        storage_log_entry.enumeration_index = idx;
 
         self.put_cf(index_to_key_map, idx.to_be_bytes(), key)?;
         self.set_last_repeated_key_index(idx)?;
