@@ -18,7 +18,7 @@ use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
 use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
 use state_reconstruct_fetcher::{
-    constants::storage,
+    constants::storage::{self, STATE_FILE_NAME},
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
     snapshot::StateSnapshot,
     types::CommitBlockInfoV1,
@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
                     };
 
                     let fetcher = L1Fetcher::new(fetcher_options, Some(snapshot.clone()))?;
-                    let processor = TreeProcessor::new(db_path, snapshot.clone()).await?;
+                    let processor = TreeProcessor::new(db_path.clone(), snapshot.clone()).await?;
                     let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
 
                     let processor_handle = tokio::spawn(async move {
@@ -87,6 +87,11 @@ async fn main() -> Result<()> {
 
                     fetcher.run(tx).await?;
                     processor_handle.await?;
+
+                    // Write the current state to a file.
+                    let snapshot = snapshot.lock().await;
+                    let state_file_path = db_path.join(STATE_FILE_NAME);
+                    snapshot.write(&state_file_path)?;
                 }
                 ReconstructSource::File { file } => {
                     let snapshot = Arc::new(Mutex::new(StateSnapshot::default()));

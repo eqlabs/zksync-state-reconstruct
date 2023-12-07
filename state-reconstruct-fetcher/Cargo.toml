@@ -13,4 +13,5 @@ serde_json = { version = "1.0.107", features = ["std"] }
 serde_json_any_key = "2.0.0"
 thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["signal"] }
+tokio-util = "0.7.10"
 tracing = "0.1.40"

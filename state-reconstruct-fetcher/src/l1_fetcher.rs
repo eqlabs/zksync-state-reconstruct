@@ -9,9 +9,10 @@ use eyre::Result;
 use rand::random;
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, oneshot, Mutex},
+    sync::{mpsc, Mutex},
     time::{sleep, Duration},
 };
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
@@ -174,11 +175,12 @@ impl L1Fetcher {
         });
 
         // Wait for shutdown signal in background.
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let token = CancellationToken::new();
+        let cloned_token = token.clone();
         tokio::spawn(async move {
             let _ = tokio::signal::ctrl_c().await;
             tracing::info!("Shutdown signal received, finishing up and shutting down...");
-            let _ = shutdown_tx.send("");
+            cloned_token.cancel();
         });
 
         let (hash_tx, hash_rx) = mpsc::channel(5);
@@ -194,21 +196,33 @@ impl L1Fetcher {
         // - BlockCommit event filter (main).
         // - Referred L1 block fetch (tx).
         // - Calldata parsing (parse).
-        let tx_handle =
-            self.spawn_tx_handler(hash_rx, calldata_tx, current_l1_block_number.as_u64());
+        let tx_handle = self.spawn_tx_handler(
+            hash_rx,
+            calldata_tx,
+            token.clone(),
+            current_l1_block_number.as_u64(),
+        );
         let parse_handle = self.spawn_parsing_handler(calldata_rx, sink)?;
         let main_handle = self.spawn_main_handler(
             hash_tx,
-            shutdown_rx,
+            token,
             current_l1_block_number,
             end_block_number,
             disable_polling,
         )?;
 
         tx_handle.await?;
-        parse_handle.await?;
+        let last_processed_l1_block_num = parse_handle.await?;
         main_handle.await?;
 
+        // Store our current L1 block number so we can resume from where we left
+        // off, we also make sure to update the metrics before printing them.
+        if let Some(block_num) = last_processed_l1_block_num {
+            self.metrics.lock().await.latest_l1_block_nbr = block_num;
+            if let Some(snapshot) = &self.snapshot {
+                snapshot.lock().await.latest_l1_block_number = U64::from(block_num);
+            }
+        }
         self.metrics.lock().await.print();
 
         Ok(())
@@ -217,7 +231,7 @@ impl L1Fetcher {
     fn spawn_main_handler(
         &self,
         hash_tx: mpsc::Sender<H256>,
-        mut shutdown_rx: oneshot::Receiver<&'static str>,
+        cancellation_token: CancellationToken,
         mut current_l1_block_number: U64,
         end_block_number: U64,
         disable_polling: bool,
@@ -225,7 +239,6 @@ impl L1Fetcher {
         let metrics = self.metrics.clone();
         let event = self.contract.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
-        let snapshot_clone = self.snapshot.clone();
 
         Ok(tokio::spawn({
             async move {
@@ -234,14 +247,9 @@ impl L1Fetcher {
                 loop {
                     // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
                     if (disable_polling && current_l1_block_number > end_block_number)
-                        || shutdown_rx.try_recv().is_ok()
+                        || cancellation_token.is_cancelled()
                     {
-                        // Store our current L1 block number so we can resume from where we left
-                        // off, we also make sure to update the metrics before leaving the loop.
-                        metrics.lock().await.latest_l1_block_nbr = current_l1_block_number.as_u64();
-                        if let Some(snapshot) = &snapshot_clone {
-                            snapshot.lock().await.latest_l1_block_number = current_l1_block_number;
-                        }
+                        tracing::debug!("Shutting down main handle...");
                         break;
                     }
 
@@ -296,6 +304,7 @@ impl L1Fetcher {
         &self,
         mut hash_rx: mpsc::Receiver<H256>,
         l1_tx_tx: mpsc::Sender<Transaction>,
+        cancellation_token: CancellationToken,
         mut last_block: u64,
     ) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
@@ -315,6 +324,12 @@ impl L1Fetcher {
                                 break tx;
                             }
                             _ => {
+                                // Task has been cancelled by user, abort loop.
+                                if cancellation_token.is_cancelled() {
+                                    tracing::debug!("Shutting down tx handle...");
+                                    return;
+                                }
+
                                 tracing::error!(
                                     "failed to get transaction for hash: {}, retrying in a bit...",
                                     hash
@@ -346,12 +361,14 @@ impl L1Fetcher {
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlockInfoV1>,
-    ) -> Result<tokio::task::JoinHandle<()>> {
+    ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let function = self.contract.functions_by_name("commitBlocks")?[0].clone();
 
         Ok(tokio::spawn({
             async move {
+                let mut last_block_number_processed = None;
+
                 while let Some(tx) = l1_tx_rx.recv().await {
                     let block_number = tx.block_number.map(|v| v.as_u64());
                     let blocks = match parse_calldata(block_number, &function, &tx.input) {
@@ -369,7 +386,13 @@ impl L1Fetcher {
                         metrics.latest_l2_block_nbr = blk.block_number;
                         sink.send(blk).await.unwrap();
                     }
+
+                    last_block_number_processed = block_number;
                 }
+
+                // Return the last processed l1 block number,
+                // so we can resume from the same point later on.
+                last_block_number_processed
             }
         }))
     }
