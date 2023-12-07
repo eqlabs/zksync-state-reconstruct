@@ -180,7 +180,9 @@ async fn main() -> Result<()> {
             chunk_size,
             directory,
         } => {
-            let exporter = SnapshotExporter::new(Path::new(&directory), db_path);
+            let export_path = Path::new(&directory);
+            std::fs::create_dir_all(&export_path)?;
+            let exporter = SnapshotExporter::new(export_path, db_path);
             exporter.export_snapshot(chunk_size)?;
         }
     }
