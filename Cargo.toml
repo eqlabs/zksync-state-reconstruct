@@ -29,6 +29,7 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
 zksync_merkle_tree = { git = "https://github.com/matter-labs/zksync-era.git" }
 zkevm_opcode_defs = { git = "https://github.com/matter-labs/era-zkevm_opcode_defs.git" }
+deflate = { version = "1.0.0", features = ["gzip"] }
 
 [build-dependencies]
 prost-build = "0.12"

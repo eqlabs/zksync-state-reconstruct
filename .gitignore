@@ -11,6 +11,7 @@ target/
 
 # Local state files.
 db/
+snapshot_db/
 StateSnapshot.json
 
 # Direnv files.

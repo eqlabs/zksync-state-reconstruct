@@ -12,6 +12,7 @@ mod types;
 use async_trait::async_trait;
 use blake2::{Blake2s256, Digest};
 use bytes::BytesMut;
+use deflate::deflate_bytes_gzip;
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use prost::Message;
@@ -300,7 +301,6 @@ impl SnapshotExporter {
             .into_string()
             .expect("path to string");
 
-        // TODO: Wrap gzip compression around the outfile.
         let mut outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -308,7 +308,10 @@ impl SnapshotExporter {
 
         // Serialize chunk.
         factory_deps.encode(&mut buf)?;
-        outfile.write_all(&buf)?;
+
+        // Wrap in gzip compression before writing.
+        let compressed_buf = deflate_bytes_gzip(&buf);
+        outfile.write_all(&compressed_buf)?;
         outfile.flush()?;
 
         Ok(())
@@ -359,7 +362,7 @@ impl SnapshotExporter {
             chunk_index += 1;
             let path = PathBuf::new()
                 .join(&self.basedir)
-                .join(format!("{chunk_index}.chunk"));
+                .join(format!("{chunk_index}.gz"));
 
             header
                 .storage_logs_chunks
@@ -372,7 +375,6 @@ impl SnapshotExporter {
                         .expect("path to string"),
                 });
 
-            // TODO: Wrap gzip compression around the outfile.
             let mut outfile = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
@@ -380,7 +382,10 @@ impl SnapshotExporter {
 
             // Serialize chunk.
             chunk.encode(&mut buf)?;
-            outfile.write_all(&buf)?;
+
+            // Wrap in gzip compression before writing.
+            let compressed_buf = deflate_bytes_gzip(&buf);
+            outfile.write_all(&compressed_buf)?;
             outfile.flush()?;
 
             // Clear $tmp buffer.
