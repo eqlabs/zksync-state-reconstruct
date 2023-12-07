@@ -1,5 +1,3 @@
-// FIXME:
-#![allow(dead_code)]
 use std::fmt;
 
 use chrono::{offset::Utc, DateTime};
