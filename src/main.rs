@@ -181,7 +181,7 @@ async fn main() -> Result<()> {
             directory,
         } => {
             let export_path = Path::new(&directory);
-            std::fs::create_dir_all(&export_path)?;
+            std::fs::create_dir_all(export_path)?;
             let exporter = SnapshotExporter::new(export_path, db_path);
             exporter.export_snapshot(chunk_size)?;
         }
