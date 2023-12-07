@@ -6,12 +6,12 @@ use crate::constants::zksync::{
     L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PackingType {
-    Add,
-    Sub,
-    Transform,
-    NoCompression,
+    Add(U256),
+    Sub(U256),
+    Transform(U256),
+    NoCompression(U256),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -20,9 +20,8 @@ pub enum L2ToL1Pubdata {
     L2ToL2Message(Vec<u8>),
     PublishedBytecode(Vec<u8>),
     CompressedStateDiff {
-        is_repeated_write: bool,
+        is_reapeated_write: bool,
         derived_key: U256,
-        compressed_value: U256,
         packing_type: PackingType,
     },
 }
@@ -94,16 +93,24 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     let mut l2_to_l1_pubdata = Vec::new();
     let mut pointer = 0;
 
+    tracing::trace!("total bytes: {}", bytes.len());
+    tracing::trace!("logs");
     // Skip over logs and messages.
     let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
+    tracing::trace!("num logs: {}", num_of_l1_to_l2_logs);
     pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
 
+    tracing::trace!("pointer: {}", pointer);
+    tracing::trace!("messages");
     let num_of_messages = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    for _ in 0..num_of_messages {
+    tracing::trace!("num messages: {}", num_of_messages);
+    for i in 0..num_of_messages {
+        tracing::trace!("message {}", i);
         let current_message_len = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
         pointer += current_message_len as usize;
     }
 
+    tracing::trace!("bytecodes");
     // Parse published bytecodes.
     let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
     for _ in 0..num_of_bytecodes {
@@ -115,6 +122,7 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
         l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
     }
 
+    tracing::trace!("statediffs");
     // Parse compressed state diffs.
     let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
@@ -127,6 +135,7 @@ fn parse_compressed_state_diffs(
     pointer: &mut usize,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut state_diffs = Vec::new();
+    tracing::trace!("header");
     // Parse the header.
     let _version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
 
@@ -141,22 +150,24 @@ fn parse_compressed_state_diffs(
 
     let enumeration_index = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
 
+    tracing::trace!("initial writes");
     // Parse initial writes.
     let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
     for _ in 0..num_of_initial_writes {
         let derived_key = U256::from_little_endian(&read_next_n_bytes::<32>(bytes, pointer));
 
-        let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
+        let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_repeated_write: false,
+            is_reapeated_write: false,
             derived_key,
-            compressed_value,
             packing_type,
         });
     }
 
+    tracing::trace!("repeated writes");
     // Parse repeated writes.
     while *pointer < bytes.len() {
+        tracing::trace!("derived key");
         let derived_key = match enumeration_index {
             4 => U256::from_big_endian(&read_next_n_bytes::<4>(bytes, pointer)),
             5 => U256::from_big_endian(&read_next_n_bytes::<5>(bytes, pointer)),
@@ -167,11 +178,10 @@ fn parse_compressed_state_diffs(
             }
         };
 
-        let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
+        let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_repeated_write: true,
+            is_reapeated_write: true,
             derived_key,
-            compressed_value,
             packing_type,
         });
     }
@@ -179,10 +189,7 @@ fn parse_compressed_state_diffs(
     Ok(state_diffs)
 }
 
-fn read_compressed_value(
-    bytes: &[u8],
-    pointer: &mut usize,
-) -> Result<(U256, PackingType), ParseError> {
+fn read_compressed_value(bytes: &[u8], pointer: &mut usize) -> Result<PackingType, ParseError> {
     let metadata = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
     let operation = metadata & OPERATION_BITMASK;
     let len = if operation == 0 {
@@ -191,11 +198,19 @@ fn read_compressed_value(
         metadata >> LENGTH_BITS_OFFSET
     } as usize;
 
+    tracing::trace!("packing type: {}", operation);
+    tracing::trace!("compressed value with len: {}", len);
+    // Read compressed value.
+    let mut buffer = [0; 32];
+    buffer[..len].copy_from_slice(&bytes[*pointer..*pointer + len]);
+    *pointer += len;
+    let compressed_value = U256::from_big_endian(&buffer);
+
     let packing_type = match operation {
-        0 => PackingType::NoCompression,
-        1 => PackingType::Add,
-        2 => PackingType::Sub,
-        3 => PackingType::Transform,
+        0 => PackingType::NoCompression(compressed_value),
+        1 => PackingType::Add(compressed_value),
+        2 => PackingType::Sub(compressed_value),
+        3 => PackingType::Transform(compressed_value),
         _ => {
             return Err(ParseError::InvalidCompressedValue(String::from(
                 "UnknownPackingType",
@@ -203,13 +218,7 @@ fn read_compressed_value(
         }
     };
 
-    // Read compressed value.
-    let mut buffer = [0; 32];
-    buffer[..len].copy_from_slice(&bytes[*pointer..*pointer + len]);
-    *pointer += len;
-    let compressed_value = U256::from_big_endian(&buffer);
-
-    Ok((compressed_value, packing_type))
+    Ok(packing_type)
 }
 
 fn read_next_n_bytes<const N: usize>(bytes: &[u8], pointer: &mut usize) -> [u8; N] {

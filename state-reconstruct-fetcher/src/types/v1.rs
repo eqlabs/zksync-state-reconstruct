@@ -175,13 +175,6 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             ));
         };
 
-        /* TODO(tuommaki): Fix the check below.
-        if new_l2_block_number <= latest_l2_block_number {
-            println!("skipping before we even get started");
-            continue;
-        }
-        */
-
         let abi::Token::Uint(timestamp) = block_elems[1].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()));
         };

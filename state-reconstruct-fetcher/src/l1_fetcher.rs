@@ -364,8 +364,6 @@ impl L1Fetcher {
         })
     }
 
-    // FIXME:
-    #[allow(clippy::absurd_extreme_comparisons)]
     fn spawn_parsing_handler(
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
@@ -473,10 +471,6 @@ pub async fn parse_calldata(
         )
         .into());
     };
-
-    //let previous_enumeration_index = previous_enumeration_index.0[0];
-    // TODO: What to do here?
-    // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
 
     // Supplement every `CommitBlock` element with L1 block number information.
     parse_commit_block_info(&new_blocks_data, l1_block_number)
