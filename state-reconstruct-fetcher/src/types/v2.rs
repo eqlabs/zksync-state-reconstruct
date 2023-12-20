@@ -89,24 +89,16 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     let mut l2_to_l1_pubdata = Vec::new();
     let mut pointer = 0;
 
-    println!("total bytes: {}", bytes.len());
-    println!("logs");
     // Skip over logs and messages.
     let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    println!("num logs: {}", num_of_l1_to_l2_logs);
     pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
 
-    println!("pointer: {}", pointer);
-    println!("messages");
     let num_of_messages = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    println!("num messages: {}", num_of_messages);
     for i in 0..num_of_messages {
-        println!("message {}", i);
         let current_message_len = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
         pointer += current_message_len as usize;
     }
 
-    println!("bytecodes");
     // Parse published bytecodes.
     let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
     for _ in 0..num_of_bytecodes {
@@ -118,7 +110,6 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
         l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
     }
 
-    println!("statediffs");
     // Parse compressed state diffs.
     let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
@@ -131,7 +122,6 @@ fn parse_compressed_state_diffs(
     pointer: &mut usize,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut state_diffs = Vec::new();
-    println!("header");
     // Parse the header.
     let _version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
 
@@ -146,7 +136,6 @@ fn parse_compressed_state_diffs(
 
     let enumeration_index = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
 
-    println!("initial writes");
     // Parse initial writes.
     let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
     for _ in 0..num_of_initial_writes {
@@ -161,10 +150,8 @@ fn parse_compressed_state_diffs(
         });
     }
 
-    println!("repeated writes");
     // Parse repeated writes.
     while *pointer < bytes.len() {
-        println!("derived key");
         let derived_key = match enumeration_index {
             4 => U256::from_big_endian(&read_next_n_bytes::<4>(bytes, pointer)),
             5 => U256::from_big_endian(&read_next_n_bytes::<5>(bytes, pointer)),
@@ -191,7 +178,6 @@ fn read_compressed_value(
     bytes: &[u8],
     pointer: &mut usize,
 ) -> Result<(U256, PackingType), ParseError> {
-    println!("metadata");
     let metadata = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
     let operation = metadata & OPERATION_BITMASK;
     let len = if operation == 0 {
@@ -200,7 +186,6 @@ fn read_compressed_value(
         metadata >> LENGTH_BITS_OFFSET
     } as usize;
 
-    println!("packing type: {}", operation);
     let packing_type = match operation {
         0 => PackingType::NoCompression,
         1 => PackingType::Add,
@@ -213,7 +198,6 @@ fn read_compressed_value(
         }
     };
 
-    println!("compressed value with len: {}", len);
     // Read compressed value.
     let mut buffer = [0; 32];
     buffer[..len].copy_from_slice(&bytes[*pointer..*pointer + len]);
@@ -262,7 +246,6 @@ impl TryFrom<&abi::Token> for ExtractedToken {
 
         /* TODO(tuommaki): Fix the check below.
         if new_l2_block_number <= latest_l2_block_number {
-            println!("skipping before we even get started");
             continue;
         }
         */
