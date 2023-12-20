@@ -94,7 +94,7 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
 
     let num_of_messages = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    for i in 0..num_of_messages {
+    for _ in 0..num_of_messages {
         let current_message_len = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
         pointer += current_message_len as usize;
     }
