@@ -21,7 +21,7 @@ use state_reconstruct_fetcher::{
     constants::storage::{self, STATE_FILE_NAME},
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
     snapshot::StateSnapshot,
-    types::CommitBlockInfoV1,
+    types::CommitBlock,
 };
 use tokio::sync::{mpsc, Mutex};
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
 
                     let fetcher = L1Fetcher::new(fetcher_options, Some(snapshot.clone()))?;
                     let processor = TreeProcessor::new(db_path.clone(), snapshot.clone()).await?;
-                    let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+                    let (tx, rx) = mpsc::channel::<CommitBlock>(5);
 
                     let processor_handle = tokio::spawn(async move {
                         processor.run(rx).await;
@@ -98,13 +98,13 @@ async fn main() -> Result<()> {
 
                     let reader = BufReader::new(File::open(&file)?);
                     let processor = TreeProcessor::new(db_path, snapshot).await?;
-                    let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+                    let (tx, rx) = mpsc::channel::<CommitBlock>(5);
 
                     tokio::spawn(async move {
                         processor.run(rx).await;
                     });
 
-                    let json_iter = json::iter_json_array::<CommitBlockInfoV1, _>(reader);
+                    let json_iter = json::iter_json_array::<CommitBlock, _>(reader);
                     let mut num_objects = 0;
                     for blk in json_iter {
                         tx.send(blk.expect("parsing")).await?;
@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
 
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
-            let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+            let (tx, rx) = mpsc::channel::<CommitBlock>(5);
 
             let processor_handle = tokio::spawn(async move {
                 processor.run(rx).await;
@@ -172,7 +172,7 @@ async fn main() -> Result<()> {
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = SnapshotBuilder::new(db_path);
 
-            let (tx, rx) = mpsc::channel::<CommitBlockInfoV1>(5);
+            let (tx, rx) = mpsc::channel::<CommitBlock>(5);
             let processor_handle = tokio::spawn(async move {
                 processor.run(rx).await;
             });

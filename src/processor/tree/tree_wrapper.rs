@@ -4,7 +4,7 @@ use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
 use eyre::Result;
 use indexmap::IndexSet;
-use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlockInfoV1};
+use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use super::RootHash;
@@ -33,7 +33,7 @@ impl TreeWrapper {
     }
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
-    pub fn insert_block(&mut self, block: &CommitBlockInfoV1) -> RootHash {
+    pub fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
         // INITIAL CALLDATA.
         let mut key_value_pairs: Vec<(U256, H256)> =
             Vec::with_capacity(block.initial_storage_changes.len());
@@ -61,11 +61,11 @@ impl TreeWrapper {
         assert_eq!(root_hash.as_bytes(), block.new_state_root);
         tracing::debug!(
             "Root hash of block {} = {}",
-            block.block_number,
+            block.l2_block_number,
             hex::encode(root_hash)
         );
 
-        tracing::debug!("Successfully processed block {}", block.block_number);
+        tracing::debug!("Successfully processed block {}", block.l2_block_number);
 
         root_hash
     }

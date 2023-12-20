@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlockInfoV1,
+    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlock,
 };
 use tokio::sync::{mpsc, Mutex};
 
@@ -48,14 +48,14 @@ impl TreeProcessor {
 
 #[async_trait]
 impl Processor for TreeProcessor {
-    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
+    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
         while let Some(block) = rx.recv().await {
             let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
-            if snapshot.latest_l2_block_number >= block.block_number {
+            if snapshot.latest_l2_block_number >= block.l2_block_number {
                 tracing::debug!(
                     "Block {} has already been processed, skipping.",
-                    block.block_number
+                    block.l2_block_number
                 );
                 continue;
             }
@@ -63,7 +63,7 @@ impl Processor for TreeProcessor {
             self.tree.insert_block(&block);
 
             // Update snapshot values.
-            snapshot.latest_l2_block_number = block.block_number;
+            snapshot.latest_l2_block_number = block.l2_block_number;
             snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
         }
     }

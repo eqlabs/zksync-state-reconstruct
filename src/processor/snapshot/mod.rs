@@ -18,7 +18,7 @@ use eyre::Result;
 use prost::Message;
 use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
-    types::CommitBlockInfoV1,
+    types::CommitBlock,
 };
 use tokio::sync::mpsc;
 
@@ -64,7 +64,7 @@ impl SnapshotBuilder {
 
 #[async_trait]
 impl Processor for SnapshotBuilder {
-    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
+    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
         while let Some(block) = rx.recv().await {
             // Initial calldata.
             for (key, value) in &block.initial_storage_changes {
