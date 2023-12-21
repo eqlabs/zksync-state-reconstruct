@@ -1,7 +1,7 @@
 use ethers::{abi, types::U256};
 use serde::{Deserialize, Serialize};
 
-use super::ParseError;
+use super::{CommitBlockFormat, CommitBlockInfo, ParseError};
 use crate::constants::zksync::{
     L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK,
 };
@@ -20,8 +20,7 @@ pub enum L2ToL1Pubdata {
     L2ToL2Message(Vec<u8>),
     PublishedBytecode(Vec<u8>),
     CompressedStateDiff {
-        /// NOTE: Does this make sense?
-        is_reapeated_write: bool,
+        is_repeated_write: bool,
         derived_key: U256,
         compressed_value: U256,
         packing_type: PackingType,
@@ -31,7 +30,7 @@ pub enum L2ToL1Pubdata {
 /// Data needed to commit new block
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CommitBlockInfo {
+pub struct V2 {
     /// L2 block number.
     pub block_number: u64,
     /// Unix timestamp denoting the start of the block execution.
@@ -50,7 +49,13 @@ pub struct CommitBlockInfo {
     pub total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
 }
 
-impl TryFrom<&abi::Token> for CommitBlockInfo {
+impl CommitBlockFormat for V2 {
+    fn to_enum_variant(self) -> CommitBlockInfo {
+        CommitBlockInfo::V2(self)
+    }
+}
+
+impl TryFrom<&abi::Token> for V2 {
     type Error = ParseError;
 
     /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
@@ -70,7 +75,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfo {
         let new_enumeration_index = new_enumeration_index.as_u64();
 
         let total_l2_to_l1_pubdata = parse_total_l2_to_l1_pubdata(total_l2_to_l1_pubdata)?;
-        let blk = CommitBlockInfo {
+        let blk = V2 {
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,
@@ -143,7 +148,7 @@ fn parse_compressed_state_diffs(
 
         let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_reapeated_write: false,
+            is_repeated_write: false,
             derived_key,
             compressed_value,
             packing_type,
@@ -164,7 +169,7 @@ fn parse_compressed_state_diffs(
 
         let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_reapeated_write: true,
+            is_repeated_write: true,
             derived_key,
             compressed_value,
             packing_type,
@@ -243,7 +248,6 @@ impl TryFrom<&abi::Token> for ExtractedToken {
                 "blockNumber".to_string(),
             ));
         };
-
 
         let abi::Token::Uint(timestamp) = block_elems[1].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()));

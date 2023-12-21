@@ -17,7 +17,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     snapshot::StateSnapshot,
-    types::{v1, v2, CommitBlock, CommitBlockInfo, ParseError},
+    types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
@@ -508,15 +508,12 @@ async fn parse_commit_block_info(
 
     let mut result = vec![];
     for d in data {
-        let block_info = {
-            if use_new_format {
-                CommitBlockInfo::V2(v2::CommitBlockInfo::try_from(d)?)
-            } else {
-                CommitBlockInfo::V1(v1::CommitBlockInfo::try_from(d)?)
-            }
+        let commit_block = if use_new_format {
+            CommitBlock::try_from_token::<V2>(d)?
+        } else {
+            CommitBlock::try_from_token::<V1>(d)?
         };
 
-        let commit_block = CommitBlock::from_commit_block(block_info).await;
         result.push(commit_block);
     }
 

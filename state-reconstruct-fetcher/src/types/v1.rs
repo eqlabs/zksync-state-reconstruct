@@ -3,11 +3,11 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json_any_key::any_key_map;
 
-use super::ParseError;
+use super::{CommitBlockFormat, CommitBlockInfo, ParseError};
 
 /// Data needed to commit new block
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CommitBlockInfo {
+pub struct V1 {
     /// L2 block number.
     pub block_number: u64,
     /// Unix timestamp denoting the start of the block execution.
@@ -34,7 +34,13 @@ pub struct CommitBlockInfo {
     pub factory_deps: Vec<Vec<u8>>,
 }
 
-impl TryFrom<&abi::Token> for CommitBlockInfo {
+impl CommitBlockFormat for V1 {
+    fn to_enum_variant(self) -> CommitBlockInfo {
+        CommitBlockInfo::V1(self)
+    }
+}
+
+impl TryFrom<&abi::Token> for V1 {
     type Error = ParseError;
 
     /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
@@ -78,7 +84,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfo {
             (repeated_changes_calldata.len() - 4) / 40
         );
 
-        let mut blk = CommitBlockInfo {
+        let mut blk = V1 {
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,

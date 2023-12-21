@@ -1,7 +1,9 @@
-use eyre::Result;
+use ethers::abi;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use self::{v1::V1, v2::V2};
 
 pub mod v1;
 pub mod v2;
@@ -26,6 +28,16 @@ pub enum ParseError {
     InvalidCompressedValue(String),
 }
 
+pub trait CommitBlockFormat {
+    fn to_enum_variant(self) -> CommitBlockInfo;
+}
+
+#[derive(Debug)]
+pub enum CommitBlockInfo {
+    V1(V1),
+    V2(V2),
+}
+
 /// Block with all required fields extracted from a [`CommitBlockInfo`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommitBlock {
@@ -44,7 +56,15 @@ pub struct CommitBlock {
 }
 
 impl CommitBlock {
-    pub async fn from_commit_block(block_type: CommitBlockInfo) -> Self {
+    pub fn try_from_token<'a, F>(value: &'a abi::Token) -> Result<Self, ParseError>
+    where
+        F: CommitBlockFormat + TryFrom<&'a abi::Token, Error = ParseError>,
+    {
+        let commit_block_info = F::try_from(value).unwrap().to_enum_variant();
+        Ok(Self::from_commit_block(commit_block_info))
+    }
+
+    pub fn from_commit_block(block_type: CommitBlockInfo) -> Self {
         match block_type {
             CommitBlockInfo::V1(block) => CommitBlock {
                 l1_block_number: None,
@@ -57,50 +77,4 @@ impl CommitBlock {
             CommitBlockInfo::V2(_block) => todo!(),
         }
     }
-}
-
-#[derive(Debug)]
-pub enum CommitBlockInfo {
-    V1(v1::CommitBlockInfo),
-    V2(v2::CommitBlockInfo),
-}
-
-// TODO: Do we need this?
-#[allow(dead_code)]
-fn decompress_bytecode(data: &[u8]) -> Result<Vec<u8>> {
-    let dict_len = u16::from_be_bytes([data[0], data[1]]);
-    let end = 2 + dict_len as usize * 8;
-    let dict = data[2..end].to_vec();
-    let encoded_data = data[end..].to_vec();
-
-    let dict: Vec<&[u8]> = dict.chunks(8).collect();
-
-    // Verify that dictionary size is below maximum.
-    if dict.len() > (1 << 16)
-    /* 2^16 */
-    {
-        return Err(ParseError::InvalidCompressedByteCode(format!(
-            "too many elements in dictionary: {}",
-            dict.len()
-        ))
-        .into());
-    }
-
-    let mut bytecode = vec![];
-    for idx in encoded_data.chunks(2) {
-        let idx = u16::from_be_bytes([idx[0], idx[1]]) as usize;
-
-        if dict.len() <= idx {
-            return Err(ParseError::InvalidCompressedByteCode(format!(
-                "encoded data index ({}) exceeds dictionary size ({})",
-                idx,
-                dict.len()
-            ))
-            .into());
-        }
-
-        bytecode.append(&mut dict[idx].to_vec());
-    }
-
-    Ok(bytecode)
 }
