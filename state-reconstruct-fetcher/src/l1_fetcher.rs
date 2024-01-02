@@ -1,4 +1,4 @@
-use std::{future::Future, ops::Fn, sync::Arc};
+use std::{fs::File, future::Future, ops::Fn, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -15,9 +15,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    constants::ethereum::{BLOCK_STEP, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     snapshot::StateSnapshot,
-    types::{CommitBlockInfoV1, ParseError},
+    types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
@@ -89,9 +89,15 @@ impl L1Metrics {
     }
 }
 
+#[derive(Clone)]
+struct Contracts {
+    v1: Contract,
+    v2: Contract,
+}
+
 pub struct L1Fetcher {
     provider: Provider<Http>,
-    contract: Contract,
+    contracts: Contracts,
     config: L1FetcherOptions,
     snapshot: Option<Arc<Mutex<StateSnapshot>>>,
     metrics: Arc<Mutex<L1Metrics>>,
@@ -105,21 +111,22 @@ impl L1Fetcher {
         let provider = Provider::<Http>::try_from(&config.http_url)
             .expect("could not instantiate HTTP Provider");
 
-        let abi_file = std::fs::File::open("./IZkSync.json")?;
-        let contract = Contract::load(abi_file)?;
+        let v1 = Contract::load(File::open("./abi/IZkSync.json")?)?;
+        let v2 = Contract::load(File::open("./abi/IZkSyncV2.json")?)?;
+        let contracts = Contracts { v1, v2 };
 
         let metrics = Arc::new(Mutex::new(L1Metrics::default()));
 
         Ok(L1Fetcher {
             provider,
-            contract,
+            contracts,
             config,
             snapshot,
             metrics,
         })
     }
 
-    pub async fn run(&self, sink: mpsc::Sender<CommitBlockInfoV1>) -> Result<()> {
+    pub async fn run(&self, sink: mpsc::Sender<CommitBlock>) -> Result<()> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
         // exists, start from the block number specified in that snapshot.
@@ -237,7 +244,7 @@ impl L1Fetcher {
         disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<()>> {
         let metrics = self.metrics.clone();
-        let event = self.contract.events_by_name("BlockCommit")?[0].clone();
+        let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
 
         Ok(tokio::spawn({
@@ -357,21 +364,33 @@ impl L1Fetcher {
         })
     }
 
+    // FIXME:
+    #[allow(clippy::absurd_extreme_comparisons)]
     fn spawn_parsing_handler(
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
-        sink: mpsc::Sender<CommitBlockInfoV1>,
+        sink: mpsc::Sender<CommitBlock>,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
-        let function = self.contract.functions_by_name("commitBlocks")?[0].clone();
-
+        let contracts = self.contracts.clone();
         Ok(tokio::spawn({
             async move {
+                let mut function =
+                    contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
                     let block_number = tx.block_number.map(|v| v.as_u64());
-                    let blocks = match parse_calldata(block_number, &function, &tx.input) {
+
+                    if let Some(block_number) = block_number {
+                        if block_number >= BOOJUM_BLOCK {
+                            function =
+                                contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
+                            tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
+                        }
+                    };
+
+                    let blocks = match parse_calldata(block_number, &function, &tx.input).await {
                         Ok(blks) => blks,
                         Err(e) => {
                             tracing::error!("failed to parse calldata: {e}");
@@ -383,15 +402,14 @@ impl L1Fetcher {
                         // NOTE: Let's see if we want to increment this in batches, instead of each block individually.
                         let mut metrics = metrics.lock().await;
                         metrics.l2_blocks_processed += 1;
-                        metrics.latest_l2_block_nbr = blk.block_number;
+                        metrics.latest_l2_block_nbr = blk.l2_block_number;
                         sink.send(blk).await.unwrap();
                     }
 
                     last_block_number_processed = block_number;
                 }
 
-                // Return the last processed l1 block number,
-                // so we can resume from the same point later on.
+                // Return the last processed l1 block number, so we can resume from the same point later on.
                 last_block_number_processed
             }
         }))
@@ -414,11 +432,11 @@ impl L1Fetcher {
     }
 }
 
-pub fn parse_calldata(
+pub async fn parse_calldata(
     l1_block_number: Option<u64>,
     commit_blocks_fn: &Function,
     calldata: &[u8],
-) -> Result<Vec<CommitBlockInfoV1>> {
+) -> Result<Vec<CommitBlock>> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
         .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
@@ -460,16 +478,26 @@ pub fn parse_calldata(
     // TODO: What to do here?
     // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
 
-    // Supplement every CommitBlockInfoV1 element with L1 block number information.
-    parse_commit_block_info(&new_blocks_data).map(|mut vec| {
-        vec.iter_mut()
-            .for_each(|e| e.l1_block_number = l1_block_number);
-        vec
-    })
+    // Supplement every `CommitBlock` element with L1 block number information.
+    parse_commit_block_info(&new_blocks_data, l1_block_number)
+        .await
+        .map(|mut vec| {
+            vec.iter_mut()
+                .for_each(|e| e.l1_block_number = l1_block_number);
+            vec
+        })
 }
 
-fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> {
-    let mut res = vec![];
+async fn parse_commit_block_info(
+    data: &abi::Token,
+    l1_block_number: Option<u64>,
+) -> Result<Vec<CommitBlock>> {
+    // By default parse blocks using [`CommitBlockInfoV1`]; if we have reached [`BOOJUM_BLOCK`], use [`CommitBlockInfoV2`].
+    let use_new_format = if let Some(block_number) = l1_block_number {
+        block_number >= BOOJUM_BLOCK
+    } else {
+        false
+    };
 
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
@@ -478,12 +506,16 @@ fn parse_commit_block_info(data: &abi::Token) -> Result<Vec<CommitBlockInfoV1>> 
         .into());
     };
 
+    let mut result = vec![];
     for d in data {
-        match CommitBlockInfoV1::try_from(d) {
-            Ok(blk) => res.push(blk),
-            Err(e) => tracing::error!("failed to parse commit block info: {e}"),
-        }
+        let commit_block = if use_new_format {
+            CommitBlock::try_from_token::<V2>(d)?
+        } else {
+            CommitBlock::try_from_token::<V1>(d)?
+        };
+
+        result.push(commit_block);
     }
 
-    Ok(res)
+    Ok(result)
 }

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use eyre::Result;
 use serde::ser::{SerializeSeq, Serializer};
 use serde_json;
-use state_reconstruct_fetcher::types::CommitBlockInfoV1;
+use state_reconstruct_fetcher::types::CommitBlock;
 use tokio::sync::mpsc;
 
 use super::Processor;
@@ -23,7 +23,7 @@ impl JsonSerializationProcessor {
 
 #[async_trait]
 impl Processor for JsonSerializationProcessor {
-    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlockInfoV1>) {
+    async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
         let mut seq = self
             .serializer
             .serialize_seq(None)

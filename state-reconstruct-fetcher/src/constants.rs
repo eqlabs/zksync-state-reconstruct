@@ -5,6 +5,9 @@ pub mod ethereum {
     /// Block number in Ethereum for zkSync genesis block.
     pub const GENESIS_BLOCK: u64 = 16_627_460;
 
+    /// Block number in Ethereum of the first Boojum-formatted block.
+    pub const BOOJUM_BLOCK: u64 = 18_711_784;
+
     /// zkSync smart contract address.
     pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
 }
@@ -18,4 +21,13 @@ pub mod storage {
 
     /// The name of the state file.
     pub const STATE_FILE_NAME: &str = "StateSnapshot.json";
+}
+
+pub mod zksync {
+    /// Bytes in raw L2 to L1 log.
+    pub const L2_TO_L1_LOG_SERIALIZE_SIZE: usize = 88;
+    // The bitmask by applying which to the compressed state diff metadata we retrieve its operation.
+    pub const OPERATION_BITMASK: u8 = 7;
+    // The number of bits shifting the compressed state diff metadata by which we retrieve its length.
+    pub const LENGTH_BITS_OFFSET: u8 = 3;
 }

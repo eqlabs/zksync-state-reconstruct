@@ -1,35 +1,13 @@
-use std::vec::Vec;
-
 use ethers::{abi, types::U256};
-use eyre::Result;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json_any_key::any_key_map;
-use thiserror::Error;
 
-#[allow(clippy::enum_variant_names)]
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("invalid Calldata: {0}")]
-    InvalidCalldata(String),
-
-    #[error("invalid StoredBlockInfo: {0}")]
-    InvalidStoredBlockInfo(String),
-
-    #[error("invalid CommitBlockInfo: {0}")]
-    InvalidCommitBlockInfo(String),
-
-    #[allow(dead_code)]
-    #[error("invalid compressed bytecode: {0}")]
-    InvalidCompressedByteCode(String),
-}
+use super::{CommitBlockFormat, CommitBlockInfo, ParseError};
 
 /// Data needed to commit new block
 #[derive(Debug, Serialize, Deserialize)]
-pub struct CommitBlockInfoV1 {
-    /// L1 block number.
-    #[serde(skip_serializing)]
-    pub l1_block_number: Option<u64>,
+pub struct V1 {
     /// L2 block number.
     pub block_number: u64,
     /// Unix timestamp denoting the start of the block execution.
@@ -56,10 +34,16 @@ pub struct CommitBlockInfoV1 {
     pub factory_deps: Vec<Vec<u8>>,
 }
 
-impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
+impl CommitBlockFormat for V1 {
+    fn to_enum_variant(self) -> CommitBlockInfo {
+        CommitBlockInfo::V1(self)
+    }
+}
+
+impl TryFrom<&abi::Token> for V1 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into [`CommitBlockInfoV1`].
+    /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
     ///
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
@@ -100,8 +84,7 @@ impl TryFrom<&abi::Token> for CommitBlockInfoV1 {
             (repeated_changes_calldata.len() - 4) / 40
         );
 
-        let mut blk = CommitBlockInfoV1 {
-            l1_block_number: None,
+        let mut blk = V1 {
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,
@@ -179,7 +162,7 @@ struct ExtractedToken {
 impl TryFrom<&abi::Token> for ExtractedToken {
     type Error = ParseError;
 
-    fn try_from(token: &abi::Token) -> std::result::Result<Self, Self::Error> {
+    fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let abi::Token::Tuple(block_elems) = token else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "struct elements".to_string(),
@@ -284,89 +267,5 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             l2_logs,
             factory_deps,
         })
-    }
-}
-
-#[allow(dead_code)]
-fn decompress_bytecode(data: &[u8]) -> Result<Vec<u8>> {
-    let dict_len = u16::from_be_bytes([data[0], data[1]]);
-    let end = 2 + dict_len as usize * 8;
-    let dict = data[2..end].to_vec();
-    let encoded_data = data[end..].to_vec();
-
-    let dict: Vec<&[u8]> = dict.chunks(8).collect();
-
-    // Verify that dictionary size is below maximum.
-    if dict.len() > (1 << 16)
-    /* 2^16 */
-    {
-        return Err(ParseError::InvalidCompressedByteCode(format!(
-            "too many elements in dictionary: {}",
-            dict.len()
-        ))
-        .into());
-    }
-
-    let mut bytecode = vec![];
-    for idx in encoded_data.chunks(2) {
-        let idx = u16::from_be_bytes([idx[0], idx[1]]) as usize;
-
-        if dict.len() <= idx {
-            return Err(ParseError::InvalidCompressedByteCode(format!(
-                "encoded data index ({}) exceeds dictionary size ({})",
-                idx,
-                dict.len()
-            ))
-            .into());
-        }
-
-        bytecode.append(&mut dict[idx].to_vec());
-    }
-
-    Ok(bytecode)
-}
-
-#[allow(dead_code)]
-pub enum L2ToL1Pubdata {
-    L2ToL1Log,
-    L2ToL2Message,
-    PublishedBytecode,
-    CompressedStateDiff,
-}
-
-/// Data needed to commit new block
-#[allow(dead_code)]
-pub struct CommitBlockInfoV2 {
-    /// L2 block number.
-    pub block_number: u64,
-    /// Unix timestamp denoting the start of the block execution.
-    pub timestamp: u64,
-    /// The serial number of the shortcut index that's used as a unique identifier for storage keys that were used twice or more.
-    pub index_repeated_storage_changes: u64,
-    /// The state root of the full state tree.
-    pub new_state_root: Vec<u8>,
-    /// Number of priority operations to be processed.
-    pub number_of_l1_txs: U256,
-    /// Hash of all priority operations from this block.
-    pub priority_operations_hash: Vec<u8>,
-    /// Concatenation of all L2 -> L1 system logs in the block.
-    pub system_logs: Vec<u8>,
-    /// Total pubdata committed to as part of bootloader run. Contents are: l2Tol1Logs <> l2Tol1Messages <> publishedBytecodes <> stateDiffs.
-    pub total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
-}
-
-impl CommitBlockInfoV1 {
-    #[allow(dead_code)]
-    pub fn as_v2(&self) -> CommitBlockInfoV2 {
-        CommitBlockInfoV2 {
-            block_number: self.block_number,
-            timestamp: self.timestamp,
-            index_repeated_storage_changes: self.index_repeated_storage_changes,
-            new_state_root: self.new_state_root.clone(),
-            number_of_l1_txs: self.number_of_l1_txs,
-            priority_operations_hash: self.priority_operations_hash.clone(),
-            system_logs: vec![],
-            total_l2_to_l1_pubdata: vec![],
-        }
     }
 }
