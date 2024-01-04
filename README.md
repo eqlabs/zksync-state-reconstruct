@@ -64,7 +64,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 To start reconstructing the state, run the following command with any valid HTTP/HTTPS Ethereum JSON-RPC endpoint, for example using `https://eth.llamarpc.com`:
 
 ```fish
-cargo +nightly run -- reconstruct l1 --http-url https://eth.llamarpc.com
+cargo run -- reconstruct l1 --http-url https://eth.llamarpc.com
 ```
 
 Once the tool is running it will continuously output the state reconstruction progress in the following format:
@@ -78,7 +78,7 @@ Once the tool is running it will continuously output the state reconstruction pr
 
 On each block insert, the tool will compare the new state root hash with that published on L1. Should they differ, the tool will panic. You can then use the `query` command to get additional information, as such:
 ```fish
-cargo +nightly run -- query root-hash
+cargo run -- query root-hash
 
 Batch: <BATCH NUMBER where hash deviated>
 Root Hash: <ROOT HASH of the local state tree>
@@ -94,7 +94,7 @@ Metrics reference:
 To view all available options, you can use the `help` command:
 
 ```fish
-$ cargo +nightly run -- --help
+cargo run -- --help
 
 zkSync state reconstruction tool
 
@@ -113,7 +113,7 @@ Options:
 You can also view all the options for the subcommands in a similar fashion:
 
 ```fish
-$ cargo +nightly run -- reconstruct --help
+cargo run -- reconstruct --help
 
 Reconstruct L2 state from a source
 
