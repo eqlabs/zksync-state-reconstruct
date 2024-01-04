@@ -6,13 +6,20 @@ Currently there are three ways to setup the environment: using the provided Nix 
 
 <details>
   <summary>Nix Flake</summary>
-  To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>. You also want to activate the experimental flakes feature of Nix, you can do so by following the instructions detailed <a href="https://nixos.wiki/wiki/Flakes">here</a>.
-  <br><br>
+  To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>.   <br><br>
 
   Once Nix is installed, the development environment can be activated via the following command:
+
+  ```nix
+  nix develop --experimental-features 'nix-command flakes'
+  ```
+
+  If you instead want to permanently enable the experimental flakes feature, you can do so by following the instructions detailed <a href="https://nixos.wiki/wiki/Flakes">here</a>. The environment can then be activated via:
+
   ```nix
   nix develop
-```
+  ```
+
 </details>
 
 <details>
@@ -40,7 +47,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
   rustup toolchain install nightly
   ```
 
-  You also need to have a recent version of `protobuf` installed and accessible via `PATH`. Use your preferred package manager to do this. For example, using brew:
+  You also need to have `protobuf`, version `3.20` or above, installed and accessible via `PATH`. Use your preferred package manager to do this. For example, using brew:
 
   ```fish
   brew install protobuf
