@@ -6,14 +6,10 @@ Currently there are three ways to setup the environment: using the provided Nix 
 
 <details>
   <summary>Nix Flake</summary>
-  To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions [here](https://nixos.org/download.html).
+  To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>. You also want to activate the experimental flakes feature of Nix, you can do so by following the instructions detailed <a href="https://nixos.wiki/wiki/Flakes">here</a>.
   <br><br>
-
-  > [!NOTE]
-  > You may need to activate the experimental flakes feature of Nix, you can do so by following the instructions detailed [here](https://nixos.wiki/wiki/Flakes).
 
   Once Nix is installed, the development environment can be activated via the following command:
-  <br><br>
   ```nix
   nix develop
 ```
@@ -37,7 +33,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 
 <details>
   <summary>Manually</summary>
-  This tool is written in nightly Rust; you can install Rust by following the official instructions [here](https://www.rust-lang.org/learn/get-started), and then running the following command to switch to the nightly toolchain:
+  This tool is written in nightly Rust; you can install Rust by following the official instructions <a href="https://www.rust-lang.org/learn/get-started">here</a>, and then running the following command to switch to the nightly toolchain:
   <br><br>
 
   ```fish
