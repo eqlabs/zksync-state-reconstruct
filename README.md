@@ -8,6 +8,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
   <summary>Nix Flake</summary>
   To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions [here](https://nixos.org/download.html).
 
+
   Once Nix is installed, the development environment can be activated via the following command:
 
   ```nix
@@ -18,6 +19,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 <details>
   <summary>Container Image</summary>
   To build the container image, use:
+
 
   ```fish
   podman build -t state-reconstruction:latest .
