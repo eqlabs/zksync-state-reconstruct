@@ -7,10 +7,13 @@ Currently there are three ways to setup the environment: using the provided Nix 
 <details>
   <summary>Nix Flake</summary>
   To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions [here](https://nixos.org/download.html).
+  <br><br>
 
+  > [!NOTE]
+  > You may need to activate the experimental flakes feature of Nix, you can do so by following the instructions detailed [here](https://nixos.wiki/wiki/Flakes).
 
   Once Nix is installed, the development environment can be activated via the following command:
-
+  <br><br>
   ```nix
   nix develop
 ```
@@ -19,7 +22,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 <details>
   <summary>Container Image</summary>
   To build the container image, use:
-
+  <br><br>
 
   ```fish
   podman build -t state-reconstruction:latest .
@@ -35,6 +38,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 <details>
   <summary>Manually</summary>
   This tool is written in nightly Rust; you can install Rust by following the official instructions [here](https://www.rust-lang.org/learn/get-started), and then running the following command to switch to the nightly toolchain:
+  <br><br>
 
   ```fish
   rustup toolchain install nightly
@@ -47,7 +51,8 @@ Currently there are three ways to setup the environment: using the provided Nix 
   ```
 </details>
 
-> Note: it is recommend to override the maximum number of open file descriptors. Without doing so you may eventually run into an error, halting progress. On Unix machines this can be done by using `ulimit` along with the `-n` argument:
+> [!IMPORTANT]
+> It is highly recommend to override the maximum number of open file descriptors. Without doing so you may eventually run into an error, halting progress. On Unix machines this can be done by using `ulimit` along with the `-n` argument:
 > ```fish
 > ulimit -n 8192
 > ```
