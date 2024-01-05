@@ -73,8 +73,7 @@ impl Processor for TreeProcessor {
             snapshot.latest_l2_block_number = block.l2_block_number;
             snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
 
-            let after = Instant::now();
-            let duration = after.duration_since(before);
+            let duration = before.elapsed();
             if metric.add(duration) > 10 {
                 let avg = metric.renew();
                 tracing::info!("BACKGROUND: avg snapshot {}", avg);

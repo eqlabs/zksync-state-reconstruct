@@ -304,8 +304,7 @@ impl L1Fetcher {
                     .await
                     {
                         {
-                            let after = Instant::now();
-                            let duration = after.duration_since(before);
+                            let duration = before.elapsed();
                             let mut guard = metrics.lock().await;
                             guard.log_acquisition.add(duration);
                         }
@@ -364,8 +363,7 @@ impl L1Fetcher {
                         .await
                         {
                             Ok(Some(tx)) => {
-                                let after = Instant::now();
-                                let duration = after.duration_since(before);
+                                let duration = before.elapsed();
                                 let mut guard = metrics.lock().await;
                                 guard.tx_acquisition.add(duration);
                                 break tx;
@@ -448,8 +446,7 @@ impl L1Fetcher {
                     }
 
                     last_block_number_processed = block_number;
-                    let after = Instant::now();
-                    let duration = after.duration_since(before);
+                    let duration = before.elapsed();
                     let mut guard = metrics.lock().await;
                     guard.parsing.add(duration);
                 }
