@@ -11,7 +11,7 @@ impl PerfMetric {
         PerfMetric {
             name: String::from(name),
             total: Duration::default(),
-            count: 0
+            count: 0,
         }
     }
 
