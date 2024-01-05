@@ -53,7 +53,6 @@ pub struct L1FetcherOptions {
     pub disable_polling: bool,
 }
 
-#[derive(Default)]
 struct L1Metrics {
     // Metrics variables.
     l1_blocks_processed: u64,
@@ -67,6 +66,22 @@ struct L1Metrics {
     log_acquisition: PerfMetric,
     tx_acquisition: PerfMetric,
     parsing: PerfMetric,
+}
+
+impl Default for L1Metrics {
+    fn default() -> Self {
+        L1Metrics {
+            l1_blocks_processed: 0,
+            l2_blocks_processed: 0,
+            latest_l1_block_nbr: 0,
+            latest_l2_block_nbr: 0,
+            first_l1_block: 0,
+            last_l1_block: 0,
+            log_acquisition: PerfMetric::new("log_acquisition"),
+            tx_acquisition: PerfMetric::new("tx_acquisition"),
+            parsing: PerfMetric::new("parsing"),
+        }
+    }
 }
 
 impl L1Metrics {

@@ -53,7 +53,7 @@ impl TreeProcessor {
 #[async_trait]
 impl Processor for TreeProcessor {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
-        let mut metric = PerfMetric::default();
+        let mut metric = PerfMetric::new("snapshot");
         while let Some(block) = rx.recv().await {
             let before = Instant::now();
 
