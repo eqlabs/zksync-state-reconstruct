@@ -7,9 +7,7 @@ use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::STATE_FILE_NAME,
-    perf_metric::PerfMetric,
-    snapshot::StateSnapshot,
+    constants::storage::STATE_FILE_NAME, perf_metric::PerfMetric, snapshot::StateSnapshot,
     types::CommitBlock,
 };
 use tokio::{
