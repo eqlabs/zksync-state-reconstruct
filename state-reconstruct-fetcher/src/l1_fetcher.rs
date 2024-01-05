@@ -10,7 +10,7 @@ use rand::random;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
-    time::{sleep, Duration},
+    time::{sleep, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -53,6 +53,12 @@ pub struct L1FetcherOptions {
 }
 
 #[derive(Default)]
+struct PerfMetric {
+    total: Duration,
+    count: u32,
+}
+
+#[derive(Default)]
 struct L1Metrics {
     // Metrics variables.
     l1_blocks_processed: u64,
@@ -62,6 +68,33 @@ struct L1Metrics {
 
     first_l1_block: u64,
     last_l1_block: u64,
+
+    log_acquisition: PerfMetric,
+    tx_acquisition: PerfMetric,
+    parsing: PerfMetric,
+}
+
+impl PerfMetric {
+    fn add(&mut self, duration: Duration) {
+        self.total += duration;
+        self.count += 1;
+    }
+
+    fn renew(&mut self) -> String {
+        let old = self.format();
+        self.total = Duration::default();
+        self.count = 0;
+        old
+    }
+
+    fn format(&self) -> String {
+        if self.count == 0 {
+            String::from("-")
+        } else {
+            let duration = self.total / self.count;
+            format!("{:?}", duration)
+        }
+    }
 }
 
 impl L1Metrics {
@@ -78,13 +111,20 @@ impl L1Metrics {
             format!("{perc:>2}%")
         };
 
+        let log_acquisition = self.log_acquisition.renew();
+        let tx_acquisition = self.tx_acquisition.renew();
+        let parsing = self.parsing.renew();
+
         tracing::info!(
-            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
+            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {} log acq {} tx acq {} parse {}",
             progress,
             self.latest_l1_block_nbr,
             self.latest_l2_block_nbr,
             self.l1_blocks_processed,
-            self.l2_blocks_processed
+            self.l2_blocks_processed,
+            log_acquisition,
+            tx_acquisition,
+            parsing,
         );
     }
 }
@@ -269,12 +309,20 @@ impl L1Fetcher {
                         .to_block(current_l1_block_number + BLOCK_STEP);
 
                     // Grab all relevant logs.
+                    let before = Instant::now();
                     if let Ok(logs) = L1Fetcher::retry_call(
                         || provider_clone.get_logs(&filter),
                         L1FetchError::GetLogs,
                     )
                     .await
                     {
+                        {
+                            let after = Instant::now();
+                            let duration = after.duration_since(before);
+                            let mut guard = metrics.lock().await;
+                            guard.log_acquisition.add(duration);
+                        }
+
                         for log in logs {
                             // log.topics:
                             // topics[1]: L2 block number.
@@ -321,6 +369,7 @@ impl L1Fetcher {
             async move {
                 while let Some(hash) = hash_rx.recv().await {
                     let tx = loop {
+                        let before = Instant::now();
                         match L1Fetcher::retry_call(
                             || provider.get_transaction(hash),
                             L1FetchError::GetTx,
@@ -328,6 +377,10 @@ impl L1Fetcher {
                         .await
                         {
                             Ok(Some(tx)) => {
+                                let after = Instant::now();
+                                let duration = after.duration_since(before);
+                                let mut guard = metrics.lock().await;
+                                guard.tx_acquisition.add(duration);
                                 break tx;
                             }
                             _ => {
@@ -380,6 +433,7 @@ impl L1Fetcher {
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
+                    let before = Instant::now();
                     let block_number = tx.block_number.map(|v| v.as_u64());
 
                     if let Some(block_number) = block_number {
@@ -407,6 +461,10 @@ impl L1Fetcher {
                     }
 
                     last_block_number_processed = block_number;
+                    let after = Instant::now();
+                    let duration = after.duration_since(before);
+                    let mut guard = metrics.lock().await;
+                    guard.parsing.add(duration);
                 }
 
                 // Return the last processed l1 block number, so we can resume from the same point later on.
