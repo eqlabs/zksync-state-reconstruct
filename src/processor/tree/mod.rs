@@ -7,9 +7,15 @@ use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlock,
+    constants::storage::STATE_FILE_NAME,
+    perf_metric::PerfMetric,
+    snapshot::StateSnapshot,
+    types::CommitBlock,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+    sync::{mpsc, Mutex},
+    time::Instant,
+};
 
 use self::tree_wrapper::TreeWrapper;
 use super::Processor;
@@ -49,7 +55,10 @@ impl TreeProcessor {
 #[async_trait]
 impl Processor for TreeProcessor {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
+        let mut metric = PerfMetric::default();
         while let Some(block) = rx.recv().await {
+            let before = Instant::now();
+
             let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
             if snapshot.latest_l2_block_number >= block.l2_block_number {
@@ -65,6 +74,13 @@ impl Processor for TreeProcessor {
             // Update snapshot values.
             snapshot.latest_l2_block_number = block.l2_block_number;
             snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
+
+            let after = Instant::now();
+            let duration = after.duration_since(before);
+            if metric.add(duration) > 10 {
+                let avg = metric.renew();
+                tracing::info!("BACKGROUND: avg snapshot {}", avg);
+            }
         }
     }
 }

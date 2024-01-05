@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    perf_metric::PerfMetric,
     snapshot::StateSnapshot,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -53,12 +54,6 @@ pub struct L1FetcherOptions {
 }
 
 #[derive(Default)]
-struct PerfMetric {
-    total: Duration,
-    count: u32,
-}
-
-#[derive(Default)]
 struct L1Metrics {
     // Metrics variables.
     l1_blocks_processed: u64,
@@ -72,29 +67,6 @@ struct L1Metrics {
     log_acquisition: PerfMetric,
     tx_acquisition: PerfMetric,
     parsing: PerfMetric,
-}
-
-impl PerfMetric {
-    fn add(&mut self, duration: Duration) {
-        self.total += duration;
-        self.count += 1;
-    }
-
-    fn renew(&mut self) -> String {
-        let old = self.format();
-        self.total = Duration::default();
-        self.count = 0;
-        old
-    }
-
-    fn format(&self) -> String {
-        if self.count == 0 {
-            String::from("-")
-        } else {
-            let duration = self.total / self.count;
-            format!("{:?}", duration)
-        }
-    }
 }
 
 impl L1Metrics {
