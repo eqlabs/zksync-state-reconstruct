@@ -307,11 +307,8 @@ impl L1Fetcher {
                     )
                     .await
                     {
-                        {
-                            let duration = before.elapsed();
-                            let mut guard = metrics.lock().await;
-                            guard.log_acquisition.add(duration);
-                        }
+                        let duration = before.elapsed();
+                        metrics.lock().await.log_acquisition.add(duration);
 
                         for log in logs {
                             // log.topics:
@@ -368,8 +365,7 @@ impl L1Fetcher {
                         {
                             Ok(Some(tx)) => {
                                 let duration = before.elapsed();
-                                let mut guard = metrics.lock().await;
-                                guard.tx_acquisition.add(duration);
+                                metrics.lock().await.tx_acquisition.add(duration);
                                 break tx;
                             }
                             _ => {
@@ -451,8 +447,7 @@ impl L1Fetcher {
 
                     last_block_number_processed = block_number;
                     let duration = before.elapsed();
-                    let mut guard = metrics.lock().await;
-                    guard.parsing.add(duration);
+                    metrics.lock().await.parsing.add(duration);
                 }
 
                 // Return the last processed l1 block number, so we can resume from the same point later on.
