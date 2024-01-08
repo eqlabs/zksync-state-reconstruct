@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
-    perf_metric::PerfMetric,
+    perf_metric::{PerfMetric, METRICS_TRACING_TARGET},
     snapshot::StateSnapshot,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -103,15 +103,19 @@ impl L1Metrics {
         let parsing = self.parsing.renew();
 
         tracing::info!(
-            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {} log acq {} tx acq {} parse {}",
+            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
             progress,
             self.latest_l1_block_nbr,
             self.latest_l2_block_nbr,
             self.l1_blocks_processed,
-            self.l2_blocks_processed,
+            self.l2_blocks_processed
+        );
+        tracing::debug!(
+            target: METRICS_TRACING_TARGET,
+            "ACQUISITION: log {} tx {} parse {}",
             log_acquisition,
             tx_acquisition,
-            parsing,
+            parsing
         );
     }
 }

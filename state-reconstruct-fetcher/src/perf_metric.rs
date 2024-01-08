@@ -1,5 +1,7 @@
 use tokio::time::Duration;
 
+pub const METRICS_TRACING_TARGET: &'static str = "metrics";
+
 pub struct PerfMetric {
     name: String,
     total: Duration,
