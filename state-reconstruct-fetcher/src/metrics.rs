@@ -1,3 +1,4 @@
+use std::fmt;
 use tokio::time::Duration;
 
 pub const METRICS_TRACING_TARGET: &str = "metrics";
@@ -46,18 +47,20 @@ impl PerfMetric {
     }
 
     pub fn renew(&mut self) -> String {
-        let old = self.format();
+        let old = format!("{}", self);
         self.total = Duration::default();
         self.count = 0;
         old
     }
+}
 
-    pub fn format(&self) -> String {
+impl fmt::Display for PerfMetric {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.count == 0 {
-            String::from("-")
+            write!(f, "-")
         } else {
             let duration = self.total / self.count;
-            format!("{:?}", duration)
+            write!(f, "{:?}", duration)
         }
     }
 }
