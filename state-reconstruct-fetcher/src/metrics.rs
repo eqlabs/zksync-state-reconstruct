@@ -2,6 +2,7 @@ use tokio::time::Duration;
 
 pub const METRICS_TRACING_TARGET: &str = "metrics";
 
+/// Average, explicitly resettable time used by a specific (named) operation.
 pub struct PerfMetric {
     name: String,
     total: Duration,
@@ -18,8 +19,13 @@ pub struct L1Metrics {
     pub first_l1_block: u64,
     pub last_l1_block: u64,
 
+    /// Time taken to procure a log from L1.
     pub log_acquisition: PerfMetric,
+
+    /// Time taken to procure a transaction from L1.
     pub tx_acquisition: PerfMetric,
+
+    /// Time taken to parse a [`CommitBlockInfo`] from a transaction.
     pub parsing: PerfMetric,
 }
 
