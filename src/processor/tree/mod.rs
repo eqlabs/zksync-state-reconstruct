@@ -55,10 +55,9 @@ impl TreeProcessor {
 #[async_trait]
 impl Processor for TreeProcessor {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
-        let mut metric = PerfMetric::new("snapshot");
+        let mut insert_metric = PerfMetric::new("tree_insert");
+        let mut snapshot_metric = PerfMetric::new("snapshot");
         while let Some(block) = rx.recv().await {
-            let before = Instant::now();
-
             let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
             if snapshot.latest_l2_block_number >= block.l2_block_number {
@@ -69,19 +68,23 @@ impl Processor for TreeProcessor {
                 continue;
             }
 
+            let mut before = Instant::now();
             self.tree.insert_block(&block);
+            insert_metric.add(before.elapsed());
 
             // Update snapshot values.
+            before = Instant::now();
             snapshot.latest_l2_block_number = block.l2_block_number;
             snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
 
-            let duration = before.elapsed();
-            if metric.add(duration) > 10 {
-                let avg = metric.reset();
+            if snapshot_metric.add(before.elapsed()) > 10 {
+                let insert_avg = insert_metric.reset();
+                let snapshot_avg = snapshot_metric.reset();
                 tracing::debug!(
                     target: METRICS_TRACING_TARGET,
-                    "PERSISTENCE: avg snapshot {}",
-                    avg
+                    "PERSISTENCE: avg insert {} snapshot {}",
+                    insert_avg,
+                    snapshot_avg
                 );
             }
         }

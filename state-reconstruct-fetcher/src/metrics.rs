@@ -110,7 +110,7 @@ impl L1Metrics {
         );
         tracing::debug!(
             target: METRICS_TRACING_TARGET,
-            "ACQUISITION: log {} tx {} parse {}",
+            "ACQUISITION: avg log {} tx {} parse {}",
             log_acquisition,
             tx_acquisition,
             parsing
