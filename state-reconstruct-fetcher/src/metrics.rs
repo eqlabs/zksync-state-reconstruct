@@ -39,7 +39,7 @@ impl PerfMetric {
     }
 
     pub fn add(&mut self, duration: Duration) -> u32 {
-        tracing::trace!("{}: {:?}", self.name, duration);
+        tracing::trace!(target: METRICS_TRACING_TARGET, "{}: {:?}", self.name, duration);
         self.total += duration;
         self.count += 1;
         self.count
