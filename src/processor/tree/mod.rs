@@ -8,7 +8,7 @@ use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
     constants::storage::STATE_FILE_NAME,
-    perf_metric::{PerfMetric, METRICS_TRACING_TARGET},
+    metrics::{PerfMetric, METRICS_TRACING_TARGET},
     snapshot::StateSnapshot,
     types::CommitBlock,
 };

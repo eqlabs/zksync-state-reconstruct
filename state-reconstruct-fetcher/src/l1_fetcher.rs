@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
-    perf_metric::{PerfMetric, METRICS_TRACING_TARGET},
+    metrics::L1Metrics,
     snapshot::StateSnapshot,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -51,73 +51,6 @@ pub struct L1FetcherOptions {
     pub block_count: Option<u64>,
     /// If present, don't poll for new blocks after reaching the end.
     pub disable_polling: bool,
-}
-
-struct L1Metrics {
-    // Metrics variables.
-    l1_blocks_processed: u64,
-    l2_blocks_processed: u64,
-    latest_l1_block_nbr: u64,
-    latest_l2_block_nbr: u64,
-
-    first_l1_block: u64,
-    last_l1_block: u64,
-
-    log_acquisition: PerfMetric,
-    tx_acquisition: PerfMetric,
-    parsing: PerfMetric,
-}
-
-impl Default for L1Metrics {
-    fn default() -> Self {
-        L1Metrics {
-            l1_blocks_processed: 0,
-            l2_blocks_processed: 0,
-            latest_l1_block_nbr: 0,
-            latest_l2_block_nbr: 0,
-            first_l1_block: 0,
-            last_l1_block: 0,
-            log_acquisition: PerfMetric::new("log_acquisition"),
-            tx_acquisition: PerfMetric::new("tx_acquisition"),
-            parsing: PerfMetric::new("parsing"),
-        }
-    }
-}
-
-impl L1Metrics {
-    fn print(&mut self) {
-        if self.latest_l1_block_nbr == 0 {
-            return;
-        }
-
-        let progress = {
-            let total = self.last_l1_block - self.first_l1_block;
-            let cur = self.latest_l1_block_nbr - self.first_l1_block;
-            // If polling past `last_l1_block`, stop at 100%.
-            let perc = std::cmp::min((cur * 100) / total, 100);
-            format!("{perc:>2}%")
-        };
-
-        let log_acquisition = self.log_acquisition.renew();
-        let tx_acquisition = self.tx_acquisition.renew();
-        let parsing = self.parsing.renew();
-
-        tracing::info!(
-            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
-            progress,
-            self.latest_l1_block_nbr,
-            self.latest_l2_block_nbr,
-            self.l1_blocks_processed,
-            self.l2_blocks_processed
-        );
-        tracing::debug!(
-            target: METRICS_TRACING_TARGET,
-            "ACQUISITION: log {} tx {} parse {}",
-            log_acquisition,
-            tx_acquisition,
-            parsing
-        );
-    }
 }
 
 #[derive(Clone)]
