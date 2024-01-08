@@ -1,4 +1,5 @@
 use std::fmt;
+
 use tokio::time::Duration;
 
 pub const METRICS_TRACING_TARGET: &str = "metrics";
@@ -46,7 +47,7 @@ impl PerfMetric {
         self.count
     }
 
-    pub fn renew(&mut self) -> String {
+    pub fn reset(&mut self) -> String {
         let old = format!("{}", self);
         self.total = Duration::default();
         self.count = 0;
@@ -95,9 +96,9 @@ impl L1Metrics {
             format!("{perc:>2}%")
         };
 
-        let log_acquisition = self.log_acquisition.renew();
-        let tx_acquisition = self.tx_acquisition.renew();
-        let parsing = self.parsing.renew();
+        let log_acquisition = self.log_acquisition.reset();
+        let tx_acquisition = self.tx_acquisition.reset();
+        let parsing = self.parsing.reset();
 
         tracing::info!(
             "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",

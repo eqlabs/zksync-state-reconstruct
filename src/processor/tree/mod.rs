@@ -77,7 +77,7 @@ impl Processor for TreeProcessor {
 
             let duration = before.elapsed();
             if metric.add(duration) > 10 {
-                let avg = metric.renew();
+                let avg = metric.reset();
                 tracing::debug!(
                     target: METRICS_TRACING_TARGET,
                     "PERSISTENCE: avg snapshot {}",
