@@ -10,12 +10,13 @@ use rand::random;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
-    time::{sleep, Duration},
+    time::{sleep, Duration, Instant},
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    metrics::L1Metrics,
     snapshot::StateSnapshot,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -50,43 +51,6 @@ pub struct L1FetcherOptions {
     pub block_count: Option<u64>,
     /// If present, don't poll for new blocks after reaching the end.
     pub disable_polling: bool,
-}
-
-#[derive(Default)]
-struct L1Metrics {
-    // Metrics variables.
-    l1_blocks_processed: u64,
-    l2_blocks_processed: u64,
-    latest_l1_block_nbr: u64,
-    latest_l2_block_nbr: u64,
-
-    first_l1_block: u64,
-    last_l1_block: u64,
-}
-
-impl L1Metrics {
-    fn print(&mut self) {
-        if self.latest_l1_block_nbr == 0 {
-            return;
-        }
-
-        let progress = {
-            let total = self.last_l1_block - self.first_l1_block;
-            let cur = self.latest_l1_block_nbr - self.first_l1_block;
-            // If polling past `last_l1_block`, stop at 100%.
-            let perc = std::cmp::min((cur * 100) / total, 100);
-            format!("{perc:>2}%")
-        };
-
-        tracing::info!(
-            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
-            progress,
-            self.latest_l1_block_nbr,
-            self.latest_l2_block_nbr,
-            self.l1_blocks_processed,
-            self.l2_blocks_processed
-        );
-    }
 }
 
 #[derive(Clone)]
@@ -269,12 +233,16 @@ impl L1Fetcher {
                         .to_block(current_l1_block_number + BLOCK_STEP);
 
                     // Grab all relevant logs.
+                    let before = Instant::now();
                     if let Ok(logs) = L1Fetcher::retry_call(
                         || provider_clone.get_logs(&filter),
                         L1FetchError::GetLogs,
                     )
                     .await
                     {
+                        let duration = before.elapsed();
+                        metrics.lock().await.log_acquisition.add(duration);
+
                         for log in logs {
                             // log.topics:
                             // topics[1]: L2 block number.
@@ -321,6 +289,7 @@ impl L1Fetcher {
             async move {
                 while let Some(hash) = hash_rx.recv().await {
                     let tx = loop {
+                        let before = Instant::now();
                         match L1Fetcher::retry_call(
                             || provider.get_transaction(hash),
                             L1FetchError::GetTx,
@@ -328,6 +297,8 @@ impl L1Fetcher {
                         .await
                         {
                             Ok(Some(tx)) => {
+                                let duration = before.elapsed();
+                                metrics.lock().await.tx_acquisition.add(duration);
                                 break tx;
                             }
                             _ => {
@@ -380,6 +351,7 @@ impl L1Fetcher {
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
+                    let before = Instant::now();
                     let block_number = tx.block_number.map(|v| v.as_u64());
 
                     if let Some(block_number) = block_number {
@@ -407,6 +379,8 @@ impl L1Fetcher {
                     }
 
                     last_block_number_processed = block_number;
+                    let duration = before.elapsed();
+                    metrics.lock().await.parsing.add(duration);
                 }
 
                 // Return the last processed l1 block number, so we can resume from the same point later on.

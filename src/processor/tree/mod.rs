@@ -7,9 +7,15 @@ use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::STATE_FILE_NAME, snapshot::StateSnapshot, types::CommitBlock,
+    constants::storage::STATE_FILE_NAME,
+    metrics::{PerfMetric, METRICS_TRACING_TARGET},
+    snapshot::StateSnapshot,
+    types::CommitBlock,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::{
+    sync::{mpsc, Mutex},
+    time::Instant,
+};
 
 use self::tree_wrapper::TreeWrapper;
 use super::Processor;
@@ -49,6 +55,8 @@ impl TreeProcessor {
 #[async_trait]
 impl Processor for TreeProcessor {
     async fn run(mut self, mut rx: mpsc::Receiver<CommitBlock>) {
+        let mut insert_metric = PerfMetric::new("tree_insert");
+        let mut snapshot_metric = PerfMetric::new("snapshot");
         while let Some(block) = rx.recv().await {
             let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
@@ -60,11 +68,25 @@ impl Processor for TreeProcessor {
                 continue;
             }
 
+            let mut before = Instant::now();
             self.tree.insert_block(&block);
+            insert_metric.add(before.elapsed());
 
             // Update snapshot values.
+            before = Instant::now();
             snapshot.latest_l2_block_number = block.l2_block_number;
             snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
+
+            if snapshot_metric.add(before.elapsed()) > 10 {
+                let insert_avg = insert_metric.reset();
+                let snapshot_avg = snapshot_metric.reset();
+                tracing::debug!(
+                    target: METRICS_TRACING_TARGET,
+                    "PERSISTENCE: avg insert {} snapshot {}",
+                    insert_avg,
+                    snapshot_avg
+                );
+            }
         }
     }
 }
