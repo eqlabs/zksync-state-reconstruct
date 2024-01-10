@@ -256,7 +256,15 @@ impl L1Fetcher {
                             }
 
                             if let Some(tx_hash) = log.transaction_hash {
-                                hash_tx.send(tx_hash).await.unwrap();
+                                if let Err(e) = hash_tx.send(tx_hash).await {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down tx sender...");
+                                        break;
+                                    } else {
+                                        tracing::error!("Cannot send tx hash: {e}");
+                                        continue;
+                                    }
+                                }
                             }
 
                             latest_l2_block_number = new_l2_block_number;
