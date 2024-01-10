@@ -256,17 +256,14 @@ impl L1Fetcher {
                             }
 
                             if let Some(tx_hash) = log.transaction_hash {
-                                match hash_tx.send(tx_hash).await {
-                                    Err(e) => {
-                                        if cancellation_token.is_cancelled() {
-                                            tracing::debug!("Shutting down...");
-                                            break;
-                                        } else {
-                                            tracing::error!("Cannot send tx hash: {e}");
-                                            continue;
-                                        }
+                                if let Err(e) = hash_tx.send(tx_hash).await {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down...");
+                                        break;
+                                    } else {
+                                        tracing::error!("Cannot send tx hash: {e}");
+                                        continue;
                                     }
-                                    _ => (),
                                 }
                             }
 
