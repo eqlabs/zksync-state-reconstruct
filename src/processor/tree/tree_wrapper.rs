@@ -1,9 +1,8 @@
-use std::{fs, path::Path, str::FromStr};
+use std::{collections::VecDeque, fs, path::Path, str::FromStr};
 
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
 use eyre::Result;
-use indexmap::IndexSet;
 use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
@@ -11,12 +10,12 @@ use super::RootHash;
 
 pub struct TreeWrapper {
     tree: MerkleTree<RocksDBWrapper>,
-    pub index_to_key_map: IndexSet<U256>,
+    pub index_to_key_map: VecDeque<U256>,
 }
 
 impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
-    pub fn new(db_path: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
+    pub fn new(db_path: &Path, mut index_to_key_map: VecDeque<U256>) -> Result<Self> {
         let db = RocksDBWrapper::new(db_path);
         let mut tree = MerkleTree::new(db);
 
@@ -42,14 +41,14 @@ impl TreeWrapper {
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
-            self.index_to_key_map.insert(key);
+            self.index_to_key_map.push_back(key);
         }
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
             let index = usize::try_from(*index).expect("truncation failed");
             // Index is 1-based so we subtract 1.
-            let key = *self.index_to_key_map.get_index(index - 1).unwrap();
+            let key = self.index_to_key_map[index - 1];
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
@@ -74,7 +73,7 @@ impl TreeWrapper {
 /// Attempts to reconstruct the genesis state from a CSV file.
 fn reconstruct_genesis_state<D: Database>(
     tree: &mut MerkleTree<D>,
-    index_to_key: &mut IndexSet<U256>,
+    index_to_key: &mut VecDeque<U256>,
     path: &str,
 ) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
@@ -167,7 +166,7 @@ fn reconstruct_genesis_state<D: Database>(
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
         key_value_pairs.push((key, value));
-        index_to_key.insert(key);
+        index_to_key.push_back(key);
     }
 
     let output = tree.extend(key_value_pairs);
