@@ -41,7 +41,7 @@ impl InnerDB {
 
     pub fn get_latest_l1_block_number(&self) -> Result<U64> {
         self.get_metadata_value(LATEST_L1_BLOCK_NUMBER)
-            .map(|n| U64::from(n))
+            .map(U64::from)
     }
 
     pub fn set_latest_l1_block_number(&self, number: u64) -> Result<()> {
