@@ -1,39 +1,41 @@
-use std::{fs, path::Path, str::FromStr};
+use std::{fs, path::Path, str::FromStr, sync::Arc};
 
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
 use eyre::Result;
-use indexmap::IndexSet;
-use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
+use state_reconstruct_fetcher::{
+    constants::storage::INITAL_STATE_PATH, database::InnerDB, types::CommitBlock,
+};
+use tokio::sync::Mutex;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
 
 use super::RootHash;
 
 pub struct TreeWrapper {
     tree: MerkleTree<RocksDBWrapper>,
-    pub index_to_key_map: IndexSet<U256>,
+    snapshot: Arc<Mutex<InnerDB>>,
 }
 
 impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
-    pub fn new(db_path: &Path, mut index_to_key_map: IndexSet<U256>) -> Result<Self> {
+    pub async fn new(
+        db_path: &Path,
+        snapshot: Arc<Mutex<InnerDB>>,
+        reconstruct: bool,
+    ) -> Result<Self> {
         let db = RocksDBWrapper::new(db_path);
         let mut tree = MerkleTree::new(db);
 
-        // If an existing `index_to_key` mapping was supplied, use that.
-        // Otherwise, reconstruct the genesis state.
-        if index_to_key_map.is_empty() {
-            reconstruct_genesis_state(&mut tree, &mut index_to_key_map, INITAL_STATE_PATH)?;
+        if reconstruct {
+            let mut guard = snapshot.lock().await;
+            reconstruct_genesis_state(&mut tree, &mut *guard, INITAL_STATE_PATH)?;
         }
 
-        Ok(Self {
-            tree,
-            index_to_key_map,
-        })
+        Ok(Self { tree, snapshot })
     }
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
-    pub fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
+    pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
         // INITIAL CALLDATA.
         let mut key_value_pairs: Vec<(U256, H256)> =
             Vec::with_capacity(block.initial_storage_changes.len());
@@ -42,14 +44,14 @@ impl TreeWrapper {
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
-            self.index_to_key_map.insert(key);
+            self.snapshot.lock().await.add_key(&key).expect("cannot add key");
         }
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
-            let index = usize::try_from(*index).expect("truncation failed");
+            let index = u64::try_from(*index).expect("truncation failed");
             // Index is 1-based so we subtract 1.
-            let key = *self.index_to_key_map.get_index(index - 1).unwrap();
+            let key = self.snapshot.lock().await.get_key(index - 1).unwrap();
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
@@ -74,7 +76,7 @@ impl TreeWrapper {
 /// Attempts to reconstruct the genesis state from a CSV file.
 fn reconstruct_genesis_state<D: Database>(
     tree: &mut MerkleTree<D>,
-    index_to_key: &mut IndexSet<U256>,
+    snapshot: &mut InnerDB,
     path: &str,
 ) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
@@ -167,7 +169,7 @@ fn reconstruct_genesis_state<D: Database>(
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
         key_value_pairs.push((key, value));
-        index_to_key.insert(key);
+        snapshot.add_key(&key).expect("cannot add genesis key");
     }
 
     let output = tree.extend(key_value_pairs);

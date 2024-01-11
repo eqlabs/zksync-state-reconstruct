@@ -20,7 +20,7 @@ pub mod storage {
     pub const DEFAULT_DB_NAME: &str = "db";
 
     /// The name of the state file.
-    pub const STATE_FILE_NAME: &str = "StateSnapshot.json";
+    pub const INNER_DB_NAME: &str = "inner_db";
 }
 
 pub mod zksync {
