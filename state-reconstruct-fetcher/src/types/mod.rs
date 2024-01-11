@@ -1,6 +1,7 @@
 use ethers::abi;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_json_any_key::any_key_map;
 use thiserror::Error;
 
 use self::{v1::V1, v2::V2};
@@ -42,14 +43,17 @@ pub enum CommitBlockInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommitBlock {
     /// L1 block number.
+    #[serde(skip)]
     pub l1_block_number: Option<u64>,
     /// L2 block number.
     pub l2_block_number: u64,
     /// The state root of the full state tree.
     pub new_state_root: Vec<u8>,
     /// Storage write access as a concatenation key-value.
+    #[serde(with = "any_key_map")]
     pub initial_storage_changes: IndexMap<[u8; 32], [u8; 32]>,
     /// Storage write access as a concatenation index-value.
+    #[serde(with = "any_key_map")]
     pub repeated_storage_changes: IndexMap<u64, [u8; 32]>,
     /// (contract bytecodes) array of L2 bytecodes that were deployed.
     pub factory_deps: Vec<Vec<u8>>,
