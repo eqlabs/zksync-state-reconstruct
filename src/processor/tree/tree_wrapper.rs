@@ -44,7 +44,11 @@ impl TreeWrapper {
             let value = H256::from(value);
 
             key_value_pairs.push((key, value));
-            self.snapshot.lock().await.add_key(&key).expect("cannot add key");
+            self.snapshot
+                .lock()
+                .await
+                .add_key(&key)
+                .expect("cannot add key");
         }
 
         // REPEATED CALLDATA.
