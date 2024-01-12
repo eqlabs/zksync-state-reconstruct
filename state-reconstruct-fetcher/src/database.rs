@@ -1,8 +1,9 @@
 use std::{convert::Into, ops::Deref, path::PathBuf};
 
 use ethers::types::{U256, U64};
-use eyre::{Report, Result};
+use eyre::Result;
 use rocksdb::{Options, DB};
+use thiserror::Error;
 
 const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
 const KEY_TO_INDEX_MAP: &str = "key_to_index_map";
@@ -13,6 +14,12 @@ const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
 const LATEST_L1_BLOCK_NUMBER: &str = "LATEST_L1_BLOCK_NUMBER";
 /// The latest l2 block number that was processed.
 const LATEST_L2_BLOCK_NUMBER: &str = "LATEST_L2_BLOCK_NUMBER";
+
+#[derive(Error, Debug)]
+pub enum DatabaseError {
+    #[error("key not found")]
+    NoSuchKey,
+}
 
 pub struct InnerDB(DB);
 
@@ -96,7 +103,7 @@ impl InnerDB {
         if let Some(key_bytes) = self.get_cf(idx2key, idx_bytes)? {
             Ok(U256::from_big_endian(&key_bytes))
         } else {
-            Err(Report::msg("not found"))
+            Err(DatabaseError::NoSuchKey.into())
         }
     }
 
