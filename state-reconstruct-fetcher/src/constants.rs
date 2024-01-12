@@ -19,7 +19,7 @@ pub mod storage {
     /// The default name of the database.
     pub const DEFAULT_DB_NAME: &str = "db";
 
-    /// The name of the state file.
+    /// The name of the index-to-key database folder.
     pub const INNER_DB_NAME: &str = "inner_db";
 }
 
