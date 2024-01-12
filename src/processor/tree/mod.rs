@@ -40,9 +40,10 @@ impl TreeProcessor {
         if init {
             tracing::info!("No existing snapshot found, starting from genesis...");
         } else {
-            if !inner_db_path.exists() {
-                panic!("missing critical part of the database");
-            }
+            assert!(
+                inner_db_path.exists(),
+                "missing critical part of the database"
+            );
         }
 
         let new_state = InnerDB::new(inner_db_path.clone())?;
