@@ -28,7 +28,7 @@ impl TreeWrapper {
 
         if reconstruct {
             let mut guard = snapshot.lock().await;
-            reconstruct_genesis_state(&mut tree, &mut *guard, INITAL_STATE_PATH)?;
+            reconstruct_genesis_state(&mut tree, &mut guard, INITAL_STATE_PATH)?;
         }
 
         Ok(Self { tree, snapshot })
@@ -53,7 +53,7 @@ impl TreeWrapper {
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
-            let index = u64::try_from(*index).expect("truncation failed");
+            let index = *index;
             // Index is 1-based so we subtract 1.
             let key = self.snapshot.lock().await.get_key(index - 1).unwrap();
             let value = H256::from(value);
