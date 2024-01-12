@@ -107,24 +107,14 @@ impl InnerDB {
         }
     }
 
-    pub fn add_key(&self, key: &U256) -> Result<u64> {
+    pub fn add_key(&self, key: &U256) -> Result<()> {
         let mut key_bytes: [u8; 32] = [0; 32];
         key.to_big_endian(&mut key_bytes);
 
         let key2idx = self.cf_handle(KEY_TO_INDEX_MAP).unwrap();
         // FIXME: These should be inside a transaction...
-        if let Some(idx_bytes) = self.get_cf(key2idx, key_bytes)? {
-            let idx = u64::from_be_bytes([
-                idx_bytes[0],
-                idx_bytes[1],
-                idx_bytes[2],
-                idx_bytes[3],
-                idx_bytes[4],
-                idx_bytes[5],
-                idx_bytes[6],
-                idx_bytes[7],
-            ]);
-            return Ok(idx);
+        if let Some(_idx_bytes) = self.get_cf(key2idx, key_bytes)? {
+            return Ok(());
         }
 
         let idx2key = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
@@ -133,7 +123,7 @@ impl InnerDB {
         self.put_cf(idx2key, idx_bytes, key_bytes)?;
         self.put_cf(key2idx, key_bytes, idx_bytes)?;
         self.set_last_repeated_key_index(idx + 1)?;
-        Ok(idx)
+        Ok(())
     }
 }
 
