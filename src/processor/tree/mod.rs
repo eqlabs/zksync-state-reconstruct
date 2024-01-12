@@ -36,9 +36,13 @@ impl TreeProcessor {
         // contains the last processed block and a mapping of index to
         // key values.
         let inner_db_path = db_path.join(INNER_DB_NAME);
-        let init = !db_path.exists() || !inner_db_path.exists();
+        let init = !db_path.exists();
         if init {
             tracing::info!("No existing snapshot found, starting from genesis...");
+        } else {
+            if !inner_db_path.exists() {
+                panic!("missing critical part of the database");
+            }
         }
 
         let new_state = InnerDB::new(inner_db_path.clone())?;
