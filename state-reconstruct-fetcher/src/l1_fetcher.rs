@@ -115,13 +115,13 @@ impl L1Fetcher {
         let end_block_number = if let Some(eb) = end_block {
             eb
         } else {
-            let opt = self
-                .provider
+            self.provider
                 .get_block(BlockNumber::Latest)
                 .await
-                .expect("block acquisition error");
-            let b = opt.expect("no latest block");
-            b.number.expect("block pending")
+                .expect("block acquisition error")
+                .expect("no latest block")
+                .number
+                .expect("block pending")
         };
 
         // Initialize metrics with last state, if it exists.
