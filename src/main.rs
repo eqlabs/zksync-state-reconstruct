@@ -137,6 +137,8 @@ async fn main() -> Result<()> {
 
             fetcher.run(tx).await?;
             processor_handle.await?;
+
+            tracing::info!("Successfully downloaded CommitBlocks to {}", file);
         }
         Command::Query {
             query,

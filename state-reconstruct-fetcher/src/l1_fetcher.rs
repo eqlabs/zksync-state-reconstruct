@@ -79,7 +79,7 @@ impl L1Fetcher {
         let v2 = Contract::load(File::open("./abi/IZkSyncV2.json")?)?;
         let contracts = Contracts { v1, v2 };
 
-        let metrics = Arc::new(Mutex::new(L1Metrics::default()));
+        let metrics = Arc::new(Mutex::new(L1Metrics::new(config.start_block)));
 
         Ok(L1Fetcher {
             provider,
@@ -128,10 +128,13 @@ impl L1Fetcher {
         {
             let mut metrics = self.metrics.lock().await;
             metrics.last_l1_block = end_block_number.as_u64();
-            metrics.first_l1_block = current_l1_block_number.as_u64();
-            metrics.latest_l1_block_nbr = current_l1_block_number.as_u64();
+            metrics.initial_l1_block = self.config.start_block;
+            metrics.first_l1_block_num = current_l1_block_number.as_u64();
+            metrics.latest_l1_block_num = current_l1_block_number.as_u64();
             if let Some(snapshot) = &self.snapshot {
-                metrics.latest_l2_block_nbr = snapshot.lock().await.latest_l2_block_number;
+                let snapshot = snapshot.lock().await;
+                metrics.latest_l2_block_num = snapshot.latest_l2_block_number;
+                metrics.first_l2_block_num = snapshot.latest_l2_block_number;
             }
         }
 
@@ -160,7 +163,7 @@ impl L1Fetcher {
         // If an `end_block` was supplied we shouldn't poll for newer blocks.
         let mut disable_polling = self.config.disable_polling;
         if end_block.is_some() {
-            disable_polling = false;
+            disable_polling = true;
         }
 
         // Split L1 block processing into three async steps:
@@ -184,17 +187,18 @@ impl L1Fetcher {
 
         tx_handle.await?;
         let last_processed_l1_block_num = parse_handle.await?;
-        main_handle.await?;
+        let last_fetched_l1_block_num = main_handle.await?;
 
         // Store our current L1 block number so we can resume from where we left
         // off, we also make sure to update the metrics before printing them.
         if let Some(block_num) = last_processed_l1_block_num {
-            self.metrics.lock().await.latest_l1_block_nbr = block_num;
             if let Some(snapshot) = &self.snapshot {
                 snapshot.lock().await.latest_l1_block_number = U64::from(block_num);
             }
         }
-        self.metrics.lock().await.print();
+        let mut metrics = self.metrics.lock().await;
+        metrics.latest_l1_block_num = last_fetched_l1_block_num;
+        metrics.print();
 
         Ok(())
     }
@@ -206,7 +210,7 @@ impl L1Fetcher {
         mut current_l1_block_number: U64,
         end_block_number: U64,
         disable_polling: bool,
-    ) -> Result<tokio::task::JoinHandle<()>> {
+    ) -> Result<tokio::task::JoinHandle<u64>> {
         let metrics = self.metrics.clone();
         let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
@@ -274,11 +278,13 @@ impl L1Fetcher {
                         continue;
                     };
 
-                    metrics.lock().await.latest_l1_block_nbr = current_l1_block_number.as_u64();
+                    metrics.lock().await.latest_l1_block_num = current_l1_block_number.as_u64();
 
                     // Increment current block index.
                     current_l1_block_number += BLOCK_STEP.into();
                 }
+
+                current_l1_block_number.as_u64()
             }
         }))
     }
@@ -331,8 +337,7 @@ impl L1Fetcher {
                     if let Some(current_block) = tx.block_number {
                         let current_block = current_block.as_u64();
                         if last_block < current_block {
-                            let mut metrics = metrics.lock().await;
-                            metrics.l1_blocks_processed += current_block - last_block;
+                            metrics.lock().await.latest_l1_block_num = current_block;
                             last_block = current_block;
                         }
                     }
@@ -343,8 +348,6 @@ impl L1Fetcher {
         })
     }
 
-    // FIXME:
-    #[allow(clippy::absurd_extreme_comparisons)]
     fn spawn_parsing_handler(
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
@@ -378,17 +381,15 @@ impl L1Fetcher {
                         }
                     };
 
+                    let mut metrics = metrics.lock().await;
                     for blk in blocks {
-                        // NOTE: Let's see if we want to increment this in batches, instead of each block individually.
-                        let mut metrics = metrics.lock().await;
-                        metrics.l2_blocks_processed += 1;
-                        metrics.latest_l2_block_nbr = blk.l2_block_number;
+                        metrics.latest_l2_block_num = blk.l2_block_number;
                         sink.send(blk).await.unwrap();
                     }
 
                     last_block_number_processed = block_number;
                     let duration = before.elapsed();
-                    metrics.lock().await.parsing.add(duration);
+                    metrics.parsing.add(duration);
                 }
 
                 // Return the last processed l1 block number, so we can resume from the same point later on.
