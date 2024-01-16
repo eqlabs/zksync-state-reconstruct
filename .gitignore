@@ -10,7 +10,7 @@ target/
 *.pdb
 
 # Local state files.
-db/
+db*/
 snapshot_db/
 StateSnapshot.json
 
