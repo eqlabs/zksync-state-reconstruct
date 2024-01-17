@@ -344,7 +344,15 @@ impl L1Fetcher {
                         }
                     }
 
-                    l1_tx_tx.send(tx).await.unwrap();
+                    if let Err(e) = l1_tx_tx.send(tx).await {
+                        if cancellation_token.is_cancelled() {
+                            tracing::debug!("Shutting down tx task...");
+                            return;
+                        } else {
+                            tracing::error!("Cannot send tx: {e}");
+                            continue;
+                        }
+                    }
                 }
             }
         })
