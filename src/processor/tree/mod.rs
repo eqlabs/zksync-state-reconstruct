@@ -7,9 +7,9 @@ use async_trait::async_trait;
 use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::STATE_FILE_NAME,
+    constants::storage::INNER_DB_NAME,
+    database::InnerDB,
     metrics::{PerfMetric, METRICS_TRACING_TARGET},
-    snapshot::StateSnapshot,
     types::CommitBlock,
 };
 use tokio::{
@@ -26,29 +26,35 @@ pub struct TreeProcessor {
     /// The internal merkle tree.
     tree: TreeWrapper,
     /// The stored state snapshot.
-    snapshot: Arc<Mutex<StateSnapshot>>,
+    snapshot: Arc<Mutex<InnerDB>>,
 }
 
 impl TreeProcessor {
-    pub async fn new(db_path: PathBuf, snapshot: Arc<Mutex<StateSnapshot>>) -> Result<Self> {
-        // If database directory already exists, we try to restore the latest state.
-        // The state contains the last processed block and a mapping of index to key
-        // values, if a state file does not exist, we simply use the defaults instead.
-        let should_restore_state = db_path.exists();
-        if should_restore_state {
-            tracing::info!("Loading previous state file...");
-            let new_state = StateSnapshot::read(&db_path.join(STATE_FILE_NAME))
-                .expect("state file is malformed");
-            *snapshot.lock().await = new_state;
+    pub async fn new(db_path: PathBuf) -> Result<Self> {
+        // If database directory already exists, we try to restore the
+        // latest state from a database inside of it.  The state
+        // contains the last processed block and a mapping of index to
+        // key values.
+        let inner_db_path = db_path.join(INNER_DB_NAME);
+        let init = !db_path.exists();
+        if init {
+            tracing::info!("No existing snapshot found, starting from genesis...");
         } else {
-            tracing::info!("No existing database found, starting from genesis...");
-        };
+            assert!(
+                inner_db_path.exists(),
+                "missing critical part of the database"
+            );
+        }
 
-        // Extract `index_to_key_map` from state snapshot.
-        let index_to_key_map = snapshot.lock().await.index_to_key_map.clone();
-        let tree = TreeWrapper::new(&db_path, index_to_key_map)?;
+        let new_state = InnerDB::new(inner_db_path.clone())?;
+        let snapshot = Arc::new(Mutex::new(new_state));
+        let tree = TreeWrapper::new(&db_path, snapshot.clone(), init).await?;
 
         Ok(Self { tree, snapshot })
+    }
+
+    pub fn get_snapshot(&self) -> Arc<Mutex<InnerDB>> {
+        self.snapshot.clone()
     }
 }
 
@@ -58,9 +64,14 @@ impl Processor for TreeProcessor {
         let mut insert_metric = PerfMetric::new("tree_insert");
         let mut snapshot_metric = PerfMetric::new("snapshot");
         while let Some(block) = rx.recv().await {
-            let mut snapshot = self.snapshot.lock().await;
             // Check if we've already processed this block.
-            if snapshot.latest_l2_block_number >= block.l2_block_number {
+            let latest_l2 = self
+                .snapshot
+                .lock()
+                .await
+                .get_latest_l2_block_number()
+                .expect("value should default to 0");
+            if latest_l2 >= block.l2_block_number {
                 tracing::debug!(
                     "Block {} has already been processed, skipping.",
                     block.l2_block_number
@@ -69,13 +80,16 @@ impl Processor for TreeProcessor {
             }
 
             let mut before = Instant::now();
-            self.tree.insert_block(&block);
+            self.tree.insert_block(&block).await;
             insert_metric.add(before.elapsed());
 
             // Update snapshot values.
             before = Instant::now();
-            snapshot.latest_l2_block_number = block.l2_block_number;
-            snapshot.index_to_key_map = self.tree.index_to_key_map.clone();
+            self.snapshot
+                .lock()
+                .await
+                .set_latest_l2_block_number(block.l2_block_number)
+                .expect("db failed");
 
             if snapshot_metric.add(before.elapsed()) > 10 {
                 let insert_avg = insert_metric.reset();

@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    database::InnerDB,
     metrics::L1Metrics,
-    snapshot::StateSnapshot,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
 
@@ -63,15 +63,12 @@ pub struct L1Fetcher {
     provider: Provider<Http>,
     contracts: Contracts,
     config: L1FetcherOptions,
-    snapshot: Option<Arc<Mutex<StateSnapshot>>>,
+    snapshot: Option<Arc<Mutex<InnerDB>>>,
     metrics: Arc<Mutex<L1Metrics>>,
 }
 
 impl L1Fetcher {
-    pub fn new(
-        config: L1FetcherOptions,
-        snapshot: Option<Arc<Mutex<StateSnapshot>>>,
-    ) -> Result<Self> {
+    pub fn new(config: L1FetcherOptions, snapshot: Option<Arc<Mutex<InnerDB>>>) -> Result<Self> {
         let provider = Provider::<Http>::try_from(&config.http_url)
             .expect("could not instantiate HTTP Provider");
 
@@ -100,8 +97,9 @@ impl L1Fetcher {
         if current_l1_block_number == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.snapshot {
                 let snapshot = snapshot.lock().await;
-                if snapshot.latest_l1_block_number > current_l1_block_number {
-                    current_l1_block_number = snapshot.latest_l1_block_number;
+                let snapshot_latest_l1_block_number = snapshot.get_latest_l1_block_number()?;
+                if snapshot_latest_l1_block_number > current_l1_block_number {
+                    current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
                         "Found snapshot, starting from L1 block {current_l1_block_number}"
                     );
@@ -114,15 +112,17 @@ impl L1Fetcher {
             .block_count
             .map(|count| U64::from(self.config.start_block + count));
 
-        let end_block_number = end_block.unwrap_or(
+        let end_block_number = if let Some(eb) = end_block {
+            eb
+        } else {
             self.provider
                 .get_block(BlockNumber::Latest)
                 .await
-                .unwrap()
-                .unwrap()
+                .expect("block acquisition error")
+                .expect("no latest block")
                 .number
-                .unwrap(),
-        );
+                .expect("block pending")
+        };
 
         // Initialize metrics with last state, if it exists.
         {
@@ -132,9 +132,8 @@ impl L1Fetcher {
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
             if let Some(snapshot) = &self.snapshot {
-                let snapshot = snapshot.lock().await;
-                metrics.latest_l2_block_num = snapshot.latest_l2_block_number;
-                metrics.first_l2_block_num = snapshot.latest_l2_block_number;
+                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_block_number()?;
+                metrics.first_l2_block_num = metrics.latest_l2_block_num;
             }
         }
 
@@ -193,7 +192,10 @@ impl L1Fetcher {
         // off, we also make sure to update the metrics before printing them.
         if let Some(block_num) = last_processed_l1_block_num {
             if let Some(snapshot) = &self.snapshot {
-                snapshot.lock().await.latest_l1_block_number = U64::from(block_num);
+                snapshot
+                    .lock()
+                    .await
+                    .set_latest_l1_block_number(block_num)?;
             }
         }
         let mut metrics = self.metrics.lock().await;

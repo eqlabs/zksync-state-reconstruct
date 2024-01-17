@@ -5108,6 +5108,7 @@ dependencies = [
  "eyre",
  "indexmap 2.1.0",
  "rand 0.8.5",
+ "rocksdb",
  "serde",
  "serde_json",
  "serde_json_any_key",

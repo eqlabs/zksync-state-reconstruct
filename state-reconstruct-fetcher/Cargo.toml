@@ -8,6 +8,7 @@ ethers = "1.0.2"
 eyre = "0.6.8"
 indexmap = { version = "2.0.2", features = ["serde"] }
 rand = "0.8.5"
+rocksdb = "0.21"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
 serde_json_any_key = "2.0.0"
