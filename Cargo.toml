@@ -23,6 +23,7 @@ rocksdb = "0.21"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
 state-reconstruct-fetcher = { path = "./state-reconstruct-fetcher" }
+syslog-tracing = "0.2.0"
 thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["macros"] }
 tracing = "0.1.40"
