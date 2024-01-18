@@ -5092,6 +5092,7 @@ dependencies = [
  "serde",
  "serde_json",
  "state-reconstruct-fetcher",
+ "syslog-tracing",
  "thiserror",
  "tokio",
  "tracing",
@@ -5242,6 +5243,17 @@ dependencies = [
  "serde",
  "smallvec",
  "zk_evm 1.3.3 (git+https://github.com/matter-labs/era-zk_evm.git?branch=v1.3.3)",
+]
+
+[[package]]
+name = "syslog-tracing"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f890b68f60eb7e87373b3b8f1f412d2a7d90460cd18294acbc0e90ba496193e"
+dependencies = [
+ "libc",
+ "tracing-core",
+ "tracing-subscriber",
 ]
 
 [[package]]
