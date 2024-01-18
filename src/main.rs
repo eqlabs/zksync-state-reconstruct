@@ -55,7 +55,7 @@ fn start_logger(default_level: LevelFilter, with_syslog: bool) {
         let syslog_layer = tracing_subscriber::fmt::layer()
             .with_target(false)
             .with_ansi(false)
-            .without_time() // syslog logs its own time
+            .without_time() // Syslog logs its own time.
             .with_writer(syslog);
 
         subscriber.with(syslog_layer).init();
