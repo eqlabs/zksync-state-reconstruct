@@ -6,7 +6,7 @@ pub mod ethereum {
     pub const GENESIS_BLOCK: u64 = 16_627_460;
 
     /// Block number in Ethereum of the first Boojum-formatted block.
-    pub const BOOJUM_BLOCK: u64 = 18_711_784;
+    pub const BOOJUM_BLOCK: u64 = 18_715_403;
 
     /// zkSync smart contract address.
     pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
