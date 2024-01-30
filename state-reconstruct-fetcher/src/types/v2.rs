@@ -136,6 +136,7 @@ fn parse_compressed_state_diffs(
     let mut buffer = [0; 4];
     buffer[..3].copy_from_slice(&bytes[*pointer..*pointer + 3]);
     *pointer += 3;
+    // FIXME: usually bigger than length of buffer
     let _total_compressed_len = u32::from_be_bytes(buffer);
 
     let enumeration_index = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
@@ -143,7 +144,7 @@ fn parse_compressed_state_diffs(
     // Parse initial writes.
     let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
     for _ in 0..num_of_initial_writes {
-        let derived_key = U256::from_little_endian(&read_next_n_bytes::<32>(bytes, pointer));
+        let derived_key = U256::from_big_endian(&read_next_n_bytes::<32>(bytes, pointer));
 
         let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
@@ -291,5 +292,23 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             system_logs,
             total_l2_to_l1_pubdata,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_compressed_value() {
+        let buf = [
+            0, 1, 0, 0, 197, 168, 90, 55, 47, 68, 26, 198, 147, 33, 10, 24, 230, 131, 181, 48, 190,
+            216, 117, 253, 202, 178, 247, 225, 1, 176, 87, 212, 51,
+        ];
+        let mut pointer = 0;
+        let packing_type = read_compressed_value(&buf, &mut pointer).unwrap();
+        let PackingType::NoCompression(_n) = packing_type else {
+            panic!("packing_type = {:?}", packing_type);
+        };
     }
 }
