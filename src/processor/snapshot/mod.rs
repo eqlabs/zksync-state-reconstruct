@@ -282,6 +282,7 @@ impl SnapshotExporter {
         let outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         serde_json::to_writer(outfile, &header)?;
@@ -322,6 +323,7 @@ impl SnapshotExporter {
         let mut outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         // Serialize chunk.
@@ -396,6 +398,7 @@ impl SnapshotExporter {
             let mut outfile = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(false)
                 .open(path)?;
 
             // Serialize chunk.
