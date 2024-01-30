@@ -134,9 +134,8 @@ fn parse_compressed_state_diffs(
     }
 
     let mut buffer = [0; 4];
-    buffer[..3].copy_from_slice(&bytes[*pointer..*pointer + 3]);
+    buffer[1..].copy_from_slice(&bytes[*pointer..*pointer + 3]);
     *pointer += 3;
-    // FIXME: usually bigger than length of buffer
     let _total_compressed_len = u32::from_be_bytes(buffer);
 
     let enumeration_index = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
@@ -188,7 +187,8 @@ fn read_compressed_value(bytes: &[u8], pointer: &mut usize) -> Result<PackingTyp
 
     // Read compressed value.
     let mut buffer = [0; 32];
-    buffer[..len].copy_from_slice(&bytes[*pointer..*pointer + len]);
+    let start = buffer.len() - len;
+    buffer[start..].copy_from_slice(&bytes[*pointer..*pointer + len]);
     *pointer += len;
     let compressed_value = U256::from_big_endian(&buffer);
 
@@ -300,7 +300,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_compressed_value() {
+    fn parse_compressed_value_common() {
         let buf = [
             0, 1, 0, 0, 197, 168, 90, 55, 47, 68, 26, 198, 147, 33, 10, 24, 230, 131, 181, 48, 190,
             216, 117, 253, 202, 178, 247, 225, 1, 176, 87, 212, 51,
@@ -310,5 +310,17 @@ mod tests {
         let PackingType::NoCompression(_n) = packing_type else {
             panic!("packing_type = {:?}", packing_type);
         };
+    }
+
+    #[test]
+    fn parse_compressed_value_add() {
+        let buf = [9, 1];
+        let mut pointer = 0;
+        let packing_type = read_compressed_value(&buf, &mut pointer).unwrap();
+        if let PackingType::Add(n) = packing_type {
+            assert_eq!(n, U256::one());
+        } else {
+            panic!("packing_type = {:?}", packing_type);
+        }
     }
 }
