@@ -127,7 +127,8 @@ fn parse_compressed_state_diffs(
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut state_diffs = Vec::new();
     // Parse the header.
-    let _version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    let version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    assert_eq!(version, 1);
 
     if *pointer >= bytes.len() {
         return Ok(state_diffs);
