@@ -61,7 +61,8 @@ impl L1Metrics {
             self.latest_l1_block_num,
             self.latest_l2_block_num,
             self.latest_l1_block_num - self.first_l1_block_num,
-            self.latest_l2_block_num - self.first_l2_block_num
+            self.latest_l2_block_num
+                .saturating_sub(self.first_l2_block_num)
         );
 
         let log_acquisition = self.log_acquisition.reset();
