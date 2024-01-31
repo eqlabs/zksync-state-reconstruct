@@ -108,8 +108,7 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     for _ in 0..num_of_bytecodes {
         let current_bytecode_len =
             u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer)) as usize;
-        let mut bytecode = Vec::new();
-        bytecode.copy_from_slice(&bytes[pointer..pointer + current_bytecode_len]);
+        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
         pointer += current_bytecode_len;
         l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
     }
