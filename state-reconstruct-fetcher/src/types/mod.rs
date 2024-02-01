@@ -67,8 +67,8 @@ impl CommitBlock {
     where
         F: CommitBlockFormat + TryFrom<&'a abi::Token, Error = ParseError>,
     {
-        let commit_block_info = F::try_from(value).unwrap().to_enum_variant();
-        Ok(Self::from_commit_block(commit_block_info))
+        let commit_block_info = F::try_from(value)?;
+        Ok(Self::from_commit_block(commit_block_info.to_enum_variant()))
     }
 
     pub fn from_commit_block(block_type: CommitBlockInfo) -> Self {
