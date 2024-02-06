@@ -490,11 +490,12 @@ pub async fn parse_calldata(
     };
 
     // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
-    let mut vec = parse_commit_block_info(&new_blocks_data, boojum_mode).await?;
+    let mut block_infos = parse_commit_block_info(&new_blocks_data, boojum_mode).await?;
     // Supplement every `CommitBlock` element with L1 block number information.
-    vec.iter_mut()
+    block_infos
+        .iter_mut()
         .for_each(|e| e.l1_block_number = l1_block_number);
-    Ok(vec)
+    Ok(block_infos)
 }
 
 async fn parse_commit_block_info(
