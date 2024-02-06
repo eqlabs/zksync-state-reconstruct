@@ -1,5 +1,6 @@
 use std::{fmt, path::Path};
 
+use eyre::Result;
 use serde::Serialize;
 use zksync_merkle_tree::{MerkleTree, RocksDBWrapper};
 
@@ -20,13 +21,13 @@ impl fmt::Display for RootHashQuery {
 pub struct QueryTree(MerkleTree<RocksDBWrapper>);
 
 impl QueryTree {
-    pub fn new(db_path: &Path) -> Self {
+    pub fn new(db_path: &Path) -> Result<Self> {
         assert!(db_path.exists());
 
-        let db = RocksDBWrapper::new(db_path).unwrap();
+        let db = RocksDBWrapper::new(db_path)?;
         let tree = MerkleTree::new(db);
 
-        Self(tree)
+        Ok(Self(tree))
     }
 
     pub fn query(&self, query: &Query) -> RootHashQuery {
