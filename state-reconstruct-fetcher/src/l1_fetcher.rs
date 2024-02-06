@@ -400,7 +400,7 @@ impl L1Fetcher {
                                 .clone();
                             }
                         }
-                    };
+                    }
 
                     let blocks =
                         match parse_calldata(block_number, boojum_mode, &function, &tx.input).await
