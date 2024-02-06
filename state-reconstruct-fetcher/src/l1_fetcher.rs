@@ -262,28 +262,27 @@ impl L1Fetcher {
                             }
 
                             if let Some(tx_hash) = log.transaction_hash {
-                                let known = if let Some(prev_hash) = previous_hash {
-                                    prev_hash == tx_hash
-                                } else {
-                                    false
-                                };
-                                if known {
-                                    tracing::debug!(
-                                        "Transaction hash {:?} already known - not sending.",
-                                        tx_hash
-                                    );
-                                } else {
-                                    if let Err(e) = hash_tx.send(tx_hash).await {
-                                        if cancellation_token.is_cancelled() {
-                                            tracing::debug!("Shutting down tx sender...");
-                                            break;
-                                        } else {
-                                            tracing::error!("Cannot send tx hash: {e}");
-                                            continue;
-                                        }
+                                if let Some(prev_hash) = previous_hash {
+                                    if prev_hash == tx_hash {
+                                        tracing::debug!(
+                                            "Transaction hash {:?} already known - not sending.",
+                                            tx_hash
+                                        );
+                                        continue;
                                     }
-                                    previous_hash = Some(tx_hash);
                                 }
+
+                                if let Err(e) = hash_tx.send(tx_hash).await {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down tx sender...");
+                                        break;
+                                    } else {
+                                        tracing::error!("Cannot send tx hash: {e}");
+                                        continue;
+                                    }
+                                }
+
+                                previous_hash = Some(tx_hash);
                             }
 
                             latest_l2_block_number = new_l2_block_number;
