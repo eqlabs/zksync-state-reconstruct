@@ -220,8 +220,7 @@ impl L1Fetcher {
         Ok(tokio::spawn({
             async move {
                 let mut latest_l2_block_number = U256::zero();
-
-                let mut previous_hash: Option<H256> = None;
+                let mut previous_hash = None;
                 loop {
                     // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
                     if (disable_polling && current_l1_block_number > end_block_number)
