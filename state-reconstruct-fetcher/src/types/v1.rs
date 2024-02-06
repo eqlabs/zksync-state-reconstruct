@@ -101,15 +101,15 @@ impl TryFrom<&abi::Token> for V1 {
         for initial_calldata in initial_changes_calldata[4..].chunks(64) {
             let mut t = initial_calldata.array_chunks::<32>();
             let key = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges key".to_string())
+                ParseError::InvalidCommitBlockInfo("initialStorageChangesKey".to_string())
             })?;
             let value = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges value".to_string())
+                ParseError::InvalidCommitBlockInfo("initialStorageChangesValue".to_string())
             })?;
 
             if t.next().is_some() {
                 return Err(ParseError::InvalidCommitBlockInfo(
-                    "initialStorageChanges multi".to_string(),
+                    "initialStorageChangesMulti".to_string(),
                 ));
             }
 
@@ -211,13 +211,13 @@ impl TryFrom<&abi::Token> for ExtractedToken {
 
         let abi::Token::Bytes(initial_changes_calldata) = block_elems[7].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
-                "initialStorageChanges param".to_string(),
+                "initialStorageChangesParam".to_string(),
             ));
         };
 
         if initial_changes_calldata.len() % 64 != 4 {
             return Err(ParseError::InvalidCommitBlockInfo(
-                "initialStorageChanges length".to_string(),
+                "initialStorageChangesLength".to_string(),
             ));
         }
         let abi::Token::Bytes(repeated_changes_calldata) = block_elems[8].clone() else {
