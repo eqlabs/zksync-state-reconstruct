@@ -6,12 +6,12 @@ use crate::constants::zksync::{
     L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PackingType {
-    Add,
-    Sub,
-    Transform,
-    NoCompression,
+    Add(U256),
+    Sub(U256),
+    Transform(U256),
+    NoCompression(U256),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,7 +22,6 @@ pub enum L2ToL1Pubdata {
     CompressedStateDiff {
         is_repeated_write: bool,
         derived_key: U256,
-        compressed_value: U256,
         packing_type: PackingType,
     },
 }
@@ -109,8 +108,7 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     for _ in 0..num_of_bytecodes {
         let current_bytecode_len =
             u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer)) as usize;
-        let mut bytecode = Vec::new();
-        bytecode.copy_from_slice(&bytes[pointer..pointer + current_bytecode_len]);
+        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
         pointer += current_bytecode_len;
         l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
     }
@@ -128,14 +126,19 @@ fn parse_compressed_state_diffs(
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut state_diffs = Vec::new();
     // Parse the header.
-    let _version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    let version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    if version != 1 {
+        return Err(ParseError::InvalidCompressedValue(String::from(
+            "VersionMismatch",
+        )));
+    }
 
     if *pointer >= bytes.len() {
         return Ok(state_diffs);
     }
 
     let mut buffer = [0; 4];
-    buffer[..3].copy_from_slice(&bytes[*pointer..*pointer + 3]);
+    buffer[1..].copy_from_slice(&bytes[*pointer..*pointer + 3]);
     *pointer += 3;
     let _total_compressed_len = u32::from_be_bytes(buffer);
 
@@ -144,13 +147,12 @@ fn parse_compressed_state_diffs(
     // Parse initial writes.
     let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
     for _ in 0..num_of_initial_writes {
-        let derived_key = U256::from_little_endian(&read_next_n_bytes::<32>(bytes, pointer));
+        let derived_key = U256::from_big_endian(&read_next_n_bytes::<32>(bytes, pointer));
 
-        let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
+        let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
             is_repeated_write: false,
             derived_key,
-            compressed_value,
             packing_type,
         });
     }
@@ -167,11 +169,10 @@ fn parse_compressed_state_diffs(
             }
         };
 
-        let (compressed_value, packing_type) = read_compressed_value(bytes, pointer)?;
+        let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
             is_repeated_write: true,
             derived_key,
-            compressed_value,
             packing_type,
         });
     }
@@ -179,10 +180,7 @@ fn parse_compressed_state_diffs(
     Ok(state_diffs)
 }
 
-fn read_compressed_value(
-    bytes: &[u8],
-    pointer: &mut usize,
-) -> Result<(U256, PackingType), ParseError> {
+fn read_compressed_value(bytes: &[u8], pointer: &mut usize) -> Result<PackingType, ParseError> {
     let metadata = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
     let operation = metadata & OPERATION_BITMASK;
     let len = if operation == 0 {
@@ -191,11 +189,18 @@ fn read_compressed_value(
         metadata >> LENGTH_BITS_OFFSET
     } as usize;
 
+    // Read compressed value.
+    let mut buffer = [0; 32];
+    let start = buffer.len() - len;
+    buffer[start..].copy_from_slice(&bytes[*pointer..*pointer + len]);
+    *pointer += len;
+    let compressed_value = U256::from_big_endian(&buffer);
+
     let packing_type = match operation {
-        0 => PackingType::NoCompression,
-        1 => PackingType::Add,
-        2 => PackingType::Sub,
-        3 => PackingType::Transform,
+        0 => PackingType::NoCompression(compressed_value),
+        1 => PackingType::Add(compressed_value),
+        2 => PackingType::Sub(compressed_value),
+        3 => PackingType::Transform(compressed_value),
         _ => {
             return Err(ParseError::InvalidCompressedValue(String::from(
                 "UnknownPackingType",
@@ -203,13 +208,7 @@ fn read_compressed_value(
         }
     };
 
-    // Read compressed value.
-    let mut buffer = [0; 32];
-    buffer[..len].copy_from_slice(&bytes[*pointer..*pointer + len]);
-    *pointer += len;
-    let compressed_value = U256::from_big_endian(&buffer);
-
-    Ok((compressed_value, packing_type))
+    Ok(packing_type)
 }
 
 fn read_next_n_bytes<const N: usize>(bytes: &[u8], pointer: &mut usize) -> [u8; N] {
@@ -297,5 +296,35 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             system_logs,
             total_l2_to_l1_pubdata,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_compressed_value_common() {
+        let buf = [
+            0, 1, 0, 0, 197, 168, 90, 55, 47, 68, 26, 198, 147, 33, 10, 24, 230, 131, 181, 48, 190,
+            216, 117, 253, 202, 178, 247, 225, 1, 176, 87, 212, 51,
+        ];
+        let mut pointer = 0;
+        let packing_type = read_compressed_value(&buf, &mut pointer).unwrap();
+        let PackingType::NoCompression(_n) = packing_type else {
+            panic!("packing_type = {:?}", packing_type);
+        };
+    }
+
+    #[test]
+    fn parse_compressed_value_add() {
+        let buf = [9, 1];
+        let mut pointer = 0;
+        let packing_type = read_compressed_value(&buf, &mut pointer).unwrap();
+        if let PackingType::Add(n) = packing_type {
+            assert_eq!(n, U256::one());
+        } else {
+            panic!("packing_type = {:?}", packing_type);
+        }
     }
 }

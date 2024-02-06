@@ -41,7 +41,8 @@ fn start_logger(default_level: LevelFilter) {
         _ => EnvFilter::default()
             .add_directive(default_level.into())
             .add_directive("hyper=off".parse().unwrap())
-            .add_directive("ethers=off".parse().unwrap()),
+            .add_directive("ethers=off".parse().unwrap())
+            .add_directive("zksync_storage=off".parse().unwrap()),
     };
 
     tracing_subscriber::fmt()

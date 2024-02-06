@@ -5086,6 +5086,7 @@ dependencies = [
  "eyre",
  "hex",
  "indexmap 2.1.0",
+ "primitive-types 0.12.2",
  "prost",
  "prost-build",
  "rocksdb",
@@ -5104,8 +5105,12 @@ dependencies = [
 name = "state-reconstruct-fetcher"
 version = "0.1.0"
 dependencies = [
+ "bincode",
+ "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "chrono",
  "ethers",
  "eyre",
+ "hex",
  "indexmap 2.1.0",
  "rand 0.8.5",
  "rocksdb",

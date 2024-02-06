@@ -18,7 +18,7 @@ use eyre::Result;
 use prost::Message;
 use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
-    types::CommitBlock,
+    types::{v2::PackingType, CommitBlock},
 };
 use tokio::sync::mpsc;
 
@@ -71,7 +71,20 @@ impl Processor for SnapshotBuilder {
                 self.database
                     .insert_storage_log(&mut SnapshotStorageLog {
                         key: U256::from_little_endian(key),
-                        value: H256::from(value),
+                        value: {
+                            // TODO: procure value depending on packing type. requires reading from
+                            // existing database.
+                            let processed_value = match value {
+                                PackingType::Add(v)
+                                | PackingType::Sub(v)
+                                | PackingType::Transform(v)
+                                | PackingType::NoCompression(v) => v,
+                            };
+
+                            let mut buffer = [0; 32];
+                            processed_value.to_big_endian(&mut buffer);
+                            H256::from(buffer)
+                        },
                         miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
                             block.l1_block_number.unwrap_or(0),
@@ -84,9 +97,24 @@ impl Processor for SnapshotBuilder {
             // Repeated calldata.
             for (index, value) in &block.repeated_storage_changes {
                 let index = usize::try_from(*index).expect("truncation failed");
+                let value = {
+                    // TODO: procure value depending on packing type. requires reading from
+                    // existing database.
+                    let processed_value = match value {
+                        PackingType::Add(v)
+                        | PackingType::Sub(v)
+                        | PackingType::Transform(v)
+                        | PackingType::NoCompression(v) => v,
+                    };
+
+                    let mut buffer = [0; 32];
+                    processed_value.to_big_endian(&mut buffer);
+                    buffer
+                };
+
                 if self
                     .database
-                    .update_storage_log_value(index as u64, value)
+                    .update_storage_log_value(index as u64, &value)
                     .is_err()
                 {
                     let max_idx = self
@@ -190,16 +218,6 @@ fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()
 
     for (address, key, value, miniblock_number) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
-        // TODO: what to do here?
-        // let version = tree.latest_version().unwrap_or_default();
-        // let _leaf = tree.read_leaves(version, &[key]);
-
-        // let existing_value = U256::from_big_endian(existing_leaf.leaf.value());
-        // if existing_value == value {
-        //     // we downgrade to read
-        //     // println!("Downgrading to read")
-        // } else {
-        // we write
         let mut tmp = [0u8; 32];
         value.to_big_endian(&mut tmp);
 
@@ -264,6 +282,7 @@ impl SnapshotExporter {
         let outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         serde_json::to_writer(outfile, &header)?;
@@ -304,6 +323,7 @@ impl SnapshotExporter {
         let mut outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
+            .truncate(false)
             .open(path)?;
 
         // Serialize chunk.
@@ -378,6 +398,7 @@ impl SnapshotExporter {
             let mut outfile = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
+                .truncate(false)
                 .open(path)?;
 
             // Serialize chunk.
