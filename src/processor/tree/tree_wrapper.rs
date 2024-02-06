@@ -38,7 +38,7 @@ impl TreeWrapper {
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
     pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
-        let mut key_values = Vec::with_capacity(block.initial_storage_changes.len());
+        let mut tree_entries = Vec::with_capacity(block.initial_storage_changes.len());
         // INITIAL CALLDATA.
         let mut index =
             block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
@@ -46,7 +46,7 @@ impl TreeWrapper {
             let key = U256::from_little_endian(key);
             let value = self.process_value(key, *value);
 
-            key_values.push(TreeEntry::new(key, index, value));
+            tree_entries.push(TreeEntry::new(key, index, value));
             self.snapshot
                 .lock()
                 .await
@@ -67,10 +67,10 @@ impl TreeWrapper {
                 .expect("invalid key index");
             let value = self.process_value(key, *value);
 
-            key_values.push(TreeEntry::new(key, index, value));
+            tree_entries.push(TreeEntry::new(key, index, value));
         }
 
-        let output = self.tree.extend(key_values);
+        let output = self.tree.extend(tree_entries);
         let root_hash = output.root_hash;
 
         tracing::debug!(
@@ -188,7 +188,7 @@ fn reconstruct_genesis_state<D: Database>(
 
     tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
-    let mut key_values = Vec::with_capacity(batched.len());
+    let mut tree_entries = Vec::with_capacity(batched.len());
     let mut index = 1;
     for (address, key, value) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
@@ -197,12 +197,12 @@ fn reconstruct_genesis_state<D: Database>(
 
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
-        key_values.push(TreeEntry::new(key, index, value));
+        tree_entries.push(TreeEntry::new(key, index, value));
         snapshot.add_key(&key).expect("cannot add genesis key");
         index += 1;
     }
 
-    let output = tree.extend(key_values);
+    let output = tree.extend(tree_entries);
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())
