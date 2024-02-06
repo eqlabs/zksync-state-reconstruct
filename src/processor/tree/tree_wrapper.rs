@@ -9,7 +9,7 @@ use state_reconstruct_fetcher::{
     types::{v2::PackingType, CommitBlock},
 };
 use tokio::sync::Mutex;
-use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
+use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 
 use super::RootHash;
 
@@ -25,7 +25,7 @@ impl TreeWrapper {
         snapshot: Arc<Mutex<InnerDB>>,
         reconstruct: bool,
     ) -> Result<Self> {
-        let db = RocksDBWrapper::new(db_path);
+        let db = RocksDBWrapper::new(db_path)?;
         let mut tree = MerkleTree::new(db);
 
         if reconstruct {
@@ -38,19 +38,21 @@ impl TreeWrapper {
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
     pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
+        let mut key_values = Vec::with_capacity(block.initial_storage_changes.len());
         // INITIAL CALLDATA.
-        let mut key_value_pairs: Vec<(U256, H256)> =
-            Vec::with_capacity(block.initial_storage_changes.len());
+        let mut index =
+            block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
         for (key, value) in &block.initial_storage_changes {
             let key = U256::from_little_endian(key);
             let value = self.process_value(key, *value);
 
-            key_value_pairs.push((key, value));
+            key_values.push(TreeEntry::new(key, index, value));
             self.snapshot
                 .lock()
                 .await
                 .add_key(&key)
                 .expect("cannot add key");
+            index += 1;
         }
 
         // REPEATED CALLDATA.
@@ -65,19 +67,19 @@ impl TreeWrapper {
                 .expect("invalid key index");
             let value = self.process_value(key, *value);
 
-            key_value_pairs.push((key, value));
+            key_values.push(TreeEntry::new(key, index, value));
         }
 
-        let output = self.tree.extend(key_value_pairs);
+        let output = self.tree.extend(key_values);
         let root_hash = output.root_hash;
 
-        assert_eq!(root_hash.as_bytes(), block.new_state_root);
         tracing::debug!(
             "Root hash of block {} = {}",
             block.l2_block_number,
             hex::encode(root_hash)
         );
 
+        assert_eq!(root_hash.as_bytes(), block.new_state_root);
         tracing::debug!("Successfully processed block {}", block.l2_block_number);
 
         root_hash
@@ -89,7 +91,7 @@ impl TreeWrapper {
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let version = self.tree.latest_version().unwrap_or_default();
                 if let Ok(leaf) = self.tree.entries(version, &[key]) {
-                    let hash = leaf.last().unwrap().value_hash;
+                    let hash = leaf.last().unwrap().value;
                     let existing_value = U256::from(hash.to_fixed_bytes());
                     // NOTE: We're explicitly allowing over-/underflow as per the spec.
                     match value {
@@ -186,7 +188,8 @@ fn reconstruct_genesis_state<D: Database>(
 
     tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
-    let mut key_value_pairs: Vec<(U256, H256)> = Vec::with_capacity(batched.len());
+    let mut key_values = Vec::with_capacity(batched.len());
+    let mut index = 1;
     for (address, key, value) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
         let mut tmp = [0u8; 32];
@@ -194,11 +197,12 @@ fn reconstruct_genesis_state<D: Database>(
 
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
-        key_value_pairs.push((key, value));
+        key_values.push(TreeEntry::new(key, index, value));
         snapshot.add_key(&key).expect("cannot add genesis key");
+        index += 1;
     }
 
-    let output = tree.extend(key_value_pairs);
+    let output = tree.extend(key_values);
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())

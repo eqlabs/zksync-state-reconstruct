@@ -23,7 +23,7 @@ impl QueryTree {
     pub fn new(db_path: &Path) -> Self {
         assert!(db_path.exists());
 
-        let db = RocksDBWrapper::new(db_path);
+        let db = RocksDBWrapper::new(db_path).unwrap();
         let tree = MerkleTree::new(db);
 
         Self(tree)
