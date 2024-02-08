@@ -18,7 +18,7 @@ use eyre::Result;
 use prost::Message;
 use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
-    types::{v2::PackingType, CommitBlock},
+    types::CommitBlock,
 };
 use tokio::sync::mpsc;
 
@@ -71,20 +71,7 @@ impl Processor for SnapshotBuilder {
                 self.database
                     .insert_storage_log(&mut SnapshotStorageLog {
                         key: U256::from_little_endian(key),
-                        value: {
-                            // TODO: procure value depending on packing type. requires reading from
-                            // existing database.
-                            let processed_value = match value {
-                                PackingType::Add(v)
-                                | PackingType::Sub(v)
-                                | PackingType::Transform(v)
-                                | PackingType::NoCompression(v) => v,
-                            };
-
-                            let mut buffer = [0; 32];
-                            processed_value.to_big_endian(&mut buffer);
-                            H256::from(buffer)
-                        },
+                        value: self.database.process_value(U256::from(key), *value),
                         miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
                             block.l1_block_number.unwrap_or(0),
@@ -97,24 +84,15 @@ impl Processor for SnapshotBuilder {
             // Repeated calldata.
             for (index, value) in &block.repeated_storage_changes {
                 let index = usize::try_from(*index).expect("truncation failed");
-                let value = {
-                    // TODO: procure value depending on packing type. requires reading from
-                    // existing database.
-                    let processed_value = match value {
-                        PackingType::Add(v)
-                        | PackingType::Sub(v)
-                        | PackingType::Transform(v)
-                        | PackingType::NoCompression(v) => v,
-                    };
-
-                    let mut buffer = [0; 32];
-                    processed_value.to_big_endian(&mut buffer);
-                    buffer
-                };
+                let key = self
+                    .database
+                    .get_key_from_index(index as u64)
+                    .expect("missing key");
+                let value = self.database.process_value(U256::from(&key[0..32]), *value);
 
                 if self
                     .database
-                    .update_storage_log_value(index as u64, &value)
+                    .update_storage_log_value(index as u64, &value.to_fixed_bytes())
                     .is_err()
                 {
                     let max_idx = self
