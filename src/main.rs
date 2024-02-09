@@ -141,7 +141,7 @@ async fn main() -> Result<()> {
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
 
-            let tree = QueryTree::new(&db_path);
+            let tree = QueryTree::new(&db_path)?;
             let result = tree.query(&query);
 
             if json {

@@ -50,6 +50,8 @@ pub struct CommitBlock {
     pub l1_block_number: Option<u64>,
     /// L2 block number.
     pub l2_block_number: u64,
+    /// Next unused key serial number.
+    pub index_repeated_storage_changes: u64,
     /// The state root of the full state tree.
     pub new_state_root: Vec<u8>,
     /// Storage write access as a concatenation key-value.
@@ -76,6 +78,7 @@ impl CommitBlock {
             CommitBlockInfo::V1(block) => CommitBlock {
                 l1_block_number: None,
                 l2_block_number: block.block_number,
+                index_repeated_storage_changes: block.index_repeated_storage_changes,
                 new_state_root: block.new_state_root,
                 initial_storage_changes: block
                     .initial_storage_changes
@@ -117,6 +120,7 @@ impl CommitBlock {
                 CommitBlock {
                     l1_block_number: None,
                     l2_block_number: block.block_number,
+                    index_repeated_storage_changes: block.index_repeated_storage_changes,
                     new_state_root: block.new_state_root,
                     initial_storage_changes,
                     repeated_storage_changes,
