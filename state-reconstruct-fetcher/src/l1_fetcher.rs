@@ -151,8 +151,15 @@ impl L1Fetcher {
         let token = CancellationToken::new();
         let cloned_token = token.clone();
         tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            tracing::info!("Shutdown signal received, finishing up and shutting down...");
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {
+                    tracing::info!("Shutdown signal received, finishing up and shutting down...");
+                }
+                Err(err) => {
+                    tracing::error!("Shutdown signal failed: {err}");
+                }
+            };
+
             cloned_token.cancel();
         });
 
@@ -175,7 +182,7 @@ impl L1Fetcher {
             token.clone(),
             current_l1_block_number.as_u64(),
         );
-        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink)?;
+        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink, token.clone())?;
         let main_handle = self.spawn_main_handler(
             hash_tx,
             token,
@@ -186,7 +193,7 @@ impl L1Fetcher {
 
         tx_handle.await?;
         let last_processed_l1_block_num = parse_handle.await?;
-        let last_fetched_l1_block_num = main_handle.await?;
+        let mut last_fetched_l1_block_num = main_handle.await?;
 
         // Store our current L1 block number so we can resume from where we left
         // off, we also make sure to update the metrics before printing them.
@@ -197,10 +204,24 @@ impl L1Fetcher {
                     .await
                     .set_latest_l1_block_number(block_num)?;
             }
+
+            // Fetching is naturally ahead of parsing, but the data
+            // that wasn't parsed on program interruption/error is
+            // now lost and will have to be fetched again...
+            if last_fetched_l1_block_num > block_num {
+                tracing::debug!(
+                    "Blocks fetched but not parsed: {}",
+                    last_fetched_l1_block_num - block_num
+                );
+                last_fetched_l1_block_num = block_num;
+            }
+
+            let mut metrics = self.metrics.lock().await;
+            metrics.latest_l1_block_num = last_fetched_l1_block_num;
+            metrics.print();
+        } else {
+            tracing::warn!("Fetcher made no progress");
         }
-        let mut metrics = self.metrics.lock().await;
-        metrics.latest_l1_block_num = last_fetched_l1_block_num;
-        metrics.print();
 
         Ok(())
     }
@@ -226,7 +247,7 @@ impl L1Fetcher {
                     if (disable_polling && current_l1_block_number > end_block_number)
                         || cancellation_token.is_cancelled()
                     {
-                        tracing::debug!("Shutting down main handle...");
+                        tracing::debug!("Shutting down main handler...");
                         break;
                     }
 
@@ -275,11 +296,12 @@ impl L1Fetcher {
                                 if let Err(e) = hash_tx.send(tx_hash).await {
                                     if cancellation_token.is_cancelled() {
                                         tracing::debug!("Shutting down tx sender...");
-                                        break;
                                     } else {
                                         tracing::error!("Cannot send tx hash: {e}");
-                                        continue;
+                                        cancellation_token.cancel();
                                     }
+
+                                    return current_l1_block_number.as_u64();
                                 }
 
                                 previous_hash = Some(tx_hash);
@@ -332,12 +354,12 @@ impl L1Fetcher {
                             _ => {
                                 // Task has been cancelled by user, abort loop.
                                 if cancellation_token.is_cancelled() {
-                                    tracing::debug!("Shutting down tx handle...");
+                                    tracing::debug!("Shutting down tx handler...");
                                     return;
                                 }
 
                                 tracing::error!(
-                                    "failed to get transaction for hash: {}, retrying in a bit...",
+                                    "Failed to get transaction for hash: {}, retrying in a bit...",
                                     hash
                                 );
                                 tokio::time::sleep(Duration::from_secs(
@@ -374,6 +396,7 @@ impl L1Fetcher {
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlock>,
+        cancellation_token: CancellationToken,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
@@ -385,6 +408,11 @@ impl L1Fetcher {
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
+                    if cancellation_token.is_cancelled() {
+                        tracing::debug!("Shutting down parsing handler...");
+                        return last_block_number_processed;
+                    }
+
                     let before = Instant::now();
                     let block_number = tx.block_number.map(|v| v.as_u64());
 
@@ -407,15 +435,25 @@ impl L1Fetcher {
                         {
                             Ok(blks) => blks,
                             Err(e) => {
-                                tracing::error!("failed to parse calldata: {e}");
-                                continue;
+                                tracing::error!("Failed to parse calldata: {e}");
+                                cancellation_token.cancel();
+                                return last_block_number_processed;
                             }
                         };
 
                     let mut metrics = metrics.lock().await;
                     for blk in blocks {
                         metrics.latest_l2_block_num = blk.l2_block_number;
-                        sink.send(blk).await.unwrap();
+                        if let Err(e) = sink.send(blk).await {
+                            if cancellation_token.is_cancelled() {
+                                tracing::debug!("Shutting down parsing task...");
+                            } else {
+                                tracing::error!("Cannot send block: {e}");
+                                cancellation_token.cancel();
+                            }
+
+                            return last_block_number_processed;
+                        }
                     }
 
                     last_block_number_processed = block_number;
