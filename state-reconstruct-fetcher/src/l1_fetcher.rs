@@ -210,7 +210,7 @@ impl L1Fetcher {
             metrics.latest_l1_block_num = last_fetched_l1_block_num;
             metrics.print();
         } else {
-            tracing::warn!("Fetcher made no progress");
+            tracing::warn!("No new blocks were processed");
         }
 
         Ok(())
