@@ -38,6 +38,9 @@ pub enum L1FetchError {
 
     #[error("get tx failed")]
     GetTx,
+
+    #[error("get end block number failed")]
+    GetEnd,
 }
 
 pub struct L1FetcherOptions {
@@ -112,22 +115,9 @@ impl L1Fetcher {
             .block_count
             .map(|count| U64::from(self.config.start_block + count));
 
-        let end_block_number = if let Some(eb) = end_block {
-            eb
-        } else {
-            self.provider
-                .get_block(BlockNumber::Latest)
-                .await
-                .expect("block acquisition error")
-                .expect("no latest block")
-                .number
-                .expect("block pending")
-        };
-
         // Initialize metrics with last state, if it exists.
         {
             let mut metrics = self.metrics.lock().await;
-            metrics.last_l1_block = end_block_number.as_u64();
             metrics.initial_l1_block = self.config.start_block;
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
@@ -187,7 +177,7 @@ impl L1Fetcher {
             hash_tx,
             token,
             current_l1_block_number,
-            end_block_number,
+            end_block,
             disable_polling,
         )?;
 
@@ -231,7 +221,7 @@ impl L1Fetcher {
         hash_tx: mpsc::Sender<H256>,
         cancellation_token: CancellationToken,
         mut current_l1_block_number: U64,
-        end_block_number: U64,
+        mut end_block: Option<U64>,
         disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<u64>> {
         let metrics = self.metrics.clone();
@@ -243,81 +233,120 @@ impl L1Fetcher {
                 let mut latest_l2_block_number = U256::zero();
                 let mut previous_hash = None;
                 loop {
-                    // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
-                    if (disable_polling && current_l1_block_number > end_block_number)
-                        || cancellation_token.is_cancelled()
-                    {
+                    // Break on the receivement of a `ctrl_c` signal.
+                    if cancellation_token.is_cancelled() {
                         tracing::debug!("Shutting down main handler...");
                         break;
                     }
 
-                    // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
-                    // TODO: Filter by executed blocks too.
-                    let filter = Filter::new()
-                        .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
-                        .topic0(event.signature())
-                        .from_block(current_l1_block_number)
-                        .to_block(current_l1_block_number + BLOCK_STEP);
+                    if let Some(end_block_number) = end_block {
+                        if current_l1_block_number > end_block_number {
+                            // This function must not be called w/ current_l1_block_number > end_block_number .
+                            assert!(!disable_polling);
+                            tracing::debug!("Waiting for upstream to move on...");
+                            tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                            end_block = None;
+                        } else {
+                            // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
+                            // TODO: Filter by executed blocks too.
+                            let filter = Filter::new()
+                                .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
+                                .topic0(event.signature())
+                                .from_block(current_l1_block_number)
+                                .to_block(current_l1_block_number + BLOCK_STEP);
 
-                    // Grab all relevant logs.
-                    let before = Instant::now();
-                    if let Ok(logs) = L1Fetcher::retry_call(
-                        || provider_clone.get_logs(&filter),
-                        L1FetchError::GetLogs,
+                            // Grab all relevant logs.
+                            let before = Instant::now();
+                            if let Ok(logs) = L1Fetcher::retry_call(
+                                || provider_clone.get_logs(&filter),
+                                L1FetchError::GetLogs,
+                            )
+                            .await
+                            {
+                                let duration = before.elapsed();
+                                metrics.lock().await.log_acquisition.add(duration);
+
+                                for log in logs {
+                                    // log.topics:
+                                    // topics[1]: L2 block number.
+                                    // topics[2]: L2 block hash.
+                                    // topics[3]: L2 commitment.
+
+                                    let new_l2_block_number =
+                                        U256::from_big_endian(log.topics[1].as_fixed_bytes());
+                                    if new_l2_block_number <= latest_l2_block_number {
+                                        continue;
+                                    }
+
+                                    if let Some(tx_hash) = log.transaction_hash {
+                                        if let Some(prev_hash) = previous_hash {
+                                            if prev_hash == tx_hash {
+                                                tracing::debug!(
+                                                "Transaction hash {:?} already known - not sending.",
+                                                tx_hash
+                                            );
+                                                continue;
+                                            }
+                                        }
+
+                                        if let Err(e) = hash_tx.send(tx_hash).await {
+                                            if cancellation_token.is_cancelled() {
+                                                tracing::debug!("Shutting down tx sender...");
+                                            } else {
+                                                tracing::error!("Cannot send tx hash: {e}");
+                                                cancellation_token.cancel();
+                                            }
+
+                                            return current_l1_block_number.as_u64();
+                                        }
+
+                                        previous_hash = Some(tx_hash);
+                                    }
+
+                                    latest_l2_block_number = new_l2_block_number;
+                                }
+                            } else {
+                                tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S))
+                                    .await;
+                                continue;
+                            };
+
+                            metrics.lock().await.latest_l1_block_num =
+                                current_l1_block_number.as_u64();
+
+                            let next_l1_block_number =
+                                current_l1_block_number + U64::from(BLOCK_STEP);
+                            if next_l1_block_number > end_block_number {
+                                if current_l1_block_number < end_block_number {
+                                    current_l1_block_number = end_block_number;
+                                } else {
+                                    if disable_polling {
+                                        tracing::debug!("Fetching finished...");
+                                        return current_l1_block_number.as_u64();
+                                    }
+
+                                    current_l1_block_number = end_block_number + U64::one();
+                                }
+                            } else {
+                                current_l1_block_number = next_l1_block_number;
+                            }
+                        }
+                    } else if let Ok(new_end) = L1Fetcher::retry_call(
+                        || provider_clone.get_block(BlockNumber::Latest),
+                        L1FetchError::GetEnd,
                     )
                     .await
                     {
-                        let duration = before.elapsed();
-                        metrics.lock().await.log_acquisition.add(duration);
-
-                        for log in logs {
-                            // log.topics:
-                            // topics[1]: L2 block number.
-                            // topics[2]: L2 block hash.
-                            // topics[3]: L2 commitment.
-
-                            let new_l2_block_number =
-                                U256::from_big_endian(log.topics[1].as_fixed_bytes());
-                            if new_l2_block_number <= latest_l2_block_number {
-                                continue;
+                        if let Some(found_block) = new_end {
+                            if let Some(end_block_number) = found_block.number {
+                                end_block = Some(end_block_number);
+                                metrics.lock().await.last_l1_block = end_block_number.as_u64();
                             }
-
-                            if let Some(tx_hash) = log.transaction_hash {
-                                if let Some(prev_hash) = previous_hash {
-                                    if prev_hash == tx_hash {
-                                        tracing::debug!(
-                                            "Transaction hash {:?} already known - not sending.",
-                                            tx_hash
-                                        );
-                                        continue;
-                                    }
-                                }
-
-                                if let Err(e) = hash_tx.send(tx_hash).await {
-                                    if cancellation_token.is_cancelled() {
-                                        tracing::debug!("Shutting down tx sender...");
-                                    } else {
-                                        tracing::error!("Cannot send tx hash: {e}");
-                                        cancellation_token.cancel();
-                                    }
-
-                                    return current_l1_block_number.as_u64();
-                                }
-
-                                previous_hash = Some(tx_hash);
-                            }
-
-                            latest_l2_block_number = new_l2_block_number;
                         }
                     } else {
+                        tracing::debug!("Cannot get latest block number...");
                         tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
-                        continue;
-                    };
-
-                    metrics.lock().await.latest_l1_block_num = current_l1_block_number.as_u64();
-
-                    // Increment current block index.
-                    current_l1_block_number += BLOCK_STEP.into();
+                    }
                 }
 
                 current_l1_block_number.as_u64()
