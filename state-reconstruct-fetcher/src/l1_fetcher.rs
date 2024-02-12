@@ -40,7 +40,7 @@ pub enum L1FetchError {
     GetTx,
 
     #[error("get end block number failed")]
-    GetEnd,
+    GetEndBlockNumber,
 }
 
 pub struct L1FetcherOptions {
@@ -333,7 +333,7 @@ impl L1Fetcher {
                         }
                     } else if let Ok(new_end) = L1Fetcher::retry_call(
                         || provider_clone.get_block(BlockNumber::Latest),
-                        L1FetchError::GetEnd,
+                        L1FetchError::GetEndBlockNumber,
                     )
                     .await
                     {
