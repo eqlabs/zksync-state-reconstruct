@@ -200,7 +200,7 @@ impl L1Fetcher {
             // now lost and will have to be fetched again...
             if last_fetched_l1_block_num > block_num {
                 tracing::debug!(
-                    "Blocks fetched but not parsed: {}",
+                    "L1 Blocks fetched but not parsed: {}",
                     last_fetched_l1_block_num - block_num
                 );
                 last_fetched_l1_block_num = block_num;
