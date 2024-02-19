@@ -80,7 +80,10 @@ impl Processor for TreeProcessor {
             }
 
             let mut before = Instant::now();
-            self.tree.insert_block(&block).await;
+            if self.tree.insert_block(&block).await.is_err() {
+                return;
+            }
+
             insert_metric.add(before.elapsed());
 
             // Update snapshot values.
