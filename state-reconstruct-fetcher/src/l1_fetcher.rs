@@ -1,9 +1,8 @@
-use std::{fs::File, future::Future, ops::Fn, sync::Arc};
+use std::{fs::File, future::Future, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
     prelude::*,
-    providers::Provider,
 };
 use eyre::Result;
 use rand::random;

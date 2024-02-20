@@ -1,4 +1,4 @@
-use std::{convert::Into, ops::Deref, path::PathBuf};
+use std::{ops::Deref, path::PathBuf};
 
 use ethers::types::{U256, U64};
 use eyre::Result;
