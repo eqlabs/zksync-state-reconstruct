@@ -1,8 +1,4 @@
-use std::{
-    convert::{Into, TryFrom},
-    ops::Deref,
-    path::PathBuf,
-};
+use std::{ops::Deref, path::PathBuf};
 
 use ethers::types::{H256, U256};
 use eyre::Result;
