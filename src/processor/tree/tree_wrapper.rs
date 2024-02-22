@@ -9,12 +9,12 @@ use state_reconstruct_fetcher::{
     types::{v2::PackingType, CommitBlock},
 };
 use tokio::sync::Mutex;
-use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
+use zksync_merkle_tree::{domain::ZkSyncTree, RocksDBWrapper, TreeInstruction};
 
 use super::RootHash;
 
 pub struct TreeWrapper {
-    tree: MerkleTree<RocksDBWrapper>,
+    tree: ZkSyncTree,
     snapshot: Arc<Mutex<InnerDB>>,
 }
 
@@ -26,7 +26,7 @@ impl TreeWrapper {
         reconstruct: bool,
     ) -> Result<Self> {
         let db = RocksDBWrapper::new(db_path)?;
-        let mut tree = MerkleTree::new(db);
+        let mut tree = ZkSyncTree::new_lightweight(db);
 
         if reconstruct {
             let mut guard = snapshot.lock().await;
@@ -38,7 +38,7 @@ impl TreeWrapper {
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
     pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
-        let mut tree_entries = Vec::with_capacity(block.initial_storage_changes.len());
+        let mut instructions = Vec::with_capacity(block.initial_storage_changes.len());
         // INITIAL CALLDATA.
         let mut index =
             block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
@@ -46,7 +46,7 @@ impl TreeWrapper {
             let key = U256::from_little_endian(key);
             let value = self.process_value(key, *value);
 
-            tree_entries.push(TreeEntry::new(key, index, value));
+            instructions.push(TreeInstruction::write(key, index, value));
             self.snapshot
                 .lock()
                 .await
@@ -67,10 +67,10 @@ impl TreeWrapper {
                 .expect("invalid key index");
             let value = self.process_value(key, *value);
 
-            tree_entries.push(TreeEntry::new(key, index, value));
+            instructions.push(TreeInstruction::write(key, index, value));
         }
 
-        let output = self.tree.extend(tree_entries);
+        let output = self.tree.process_l1_batch(instructions.as_slice());
         let root_hash = output.root_hash;
 
         tracing::debug!(
@@ -85,12 +85,17 @@ impl TreeWrapper {
         root_hash
     }
 
+    fn latest_version(&self) -> L1BatchNumber {
+        let bn = self.tree.next_l1_batch_number();
+        L1BatchNumber(bn.0 - 1)
+    }
+
     fn process_value(&self, key: U256, value: PackingType) -> H256 {
         let processed_value = match value {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
-                let version = self.tree.latest_version().unwrap_or_default();
-                if let Ok(leaf) = self.tree.entries(version, &[key]) {
+                let version = self.latest_version();
+                if let Ok(leaf) = self.tree.entries_with_proofs(version, &[key]) {
                     let hash = leaf.last().unwrap().value;
                     let existing_value = U256::from(hash.to_fixed_bytes());
                     // NOTE: We're explicitly allowing over-/underflow as per the spec.
@@ -112,8 +117,8 @@ impl TreeWrapper {
 }
 
 /// Attempts to reconstruct the genesis state from a CSV file.
-fn reconstruct_genesis_state<D: Database>(
-    tree: &mut MerkleTree<D>,
+fn reconstruct_genesis_state(
+    tree: &mut ZkSyncTree,
     snapshot: &mut InnerDB,
     path: &str,
 ) -> Result<()> {
@@ -188,7 +193,7 @@ fn reconstruct_genesis_state<D: Database>(
 
     tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
-    let mut tree_entries = Vec::with_capacity(batched.len());
+    let mut instructions = Vec::with_capacity(batched.len());
     let mut index = 1;
     for (address, key, value) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
@@ -197,12 +202,12 @@ fn reconstruct_genesis_state<D: Database>(
 
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
-        tree_entries.push(TreeEntry::new(key, index, value));
+        instructions.push(TreeInstruction::write(key, index, value));
         snapshot.add_key(&key).expect("cannot add genesis key");
         index += 1;
     }
 
-    let output = tree.extend(tree_entries);
+    let output = tree.process_l1_batch(instructions.as_slice());
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())
