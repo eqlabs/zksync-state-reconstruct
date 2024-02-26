@@ -144,8 +144,9 @@ impl TreeWrapper {
     }
 
     fn insert_known_key(&mut self, index: u64, key: U256) {
-        let result = self.index2key.insert(index, key);
-        assert!(result.is_none());
+        if let Some(old_key) = self.index2key.insert(index, key) {
+            assert_eq!(old_key, key);
+        }
     }
 
     fn insert_known_value(&mut self, key: U256, value: H256) {
