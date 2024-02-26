@@ -3,7 +3,7 @@ use std::{ops::Deref, path::PathBuf};
 use ethers::types::{H256, U256};
 use eyre::Result;
 use rocksdb::{Options, DB};
-use state_reconstruct_fetcher::types::v2::PackingType;
+use state_reconstruct_fetcher::types::PackingType;
 use thiserror::Error;
 
 use super::types::{SnapshotFactoryDependency, SnapshotStorageLog};
