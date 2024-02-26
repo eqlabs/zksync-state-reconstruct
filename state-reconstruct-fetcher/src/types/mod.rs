@@ -7,6 +7,7 @@ use thiserror::Error;
 use self::{v1::V1, v2::V2, v3::V3};
 
 // NOTE: We should probably make these more human-readable.
+pub mod common;
 pub mod v1;
 pub mod v2;
 pub mod v3;

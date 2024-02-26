@@ -474,16 +474,14 @@ impl L1Fetcher {
                         }
                     }
 
-                    let blocks =
-                        match parse_calldata(block_number, boojum_mode, &function, &tx.input).await
-                        {
-                            Ok(blks) => blks,
-                            Err(e) => {
-                                tracing::error!("Failed to parse calldata: {e}");
-                                cancellation_token.cancel();
-                                return last_block_number_processed;
-                            }
-                        };
+                    let blocks = match parse_calldata(block_number, &function, &tx.input).await {
+                        Ok(blks) => blks,
+                        Err(e) => {
+                            tracing::error!("Failed to parse calldata: {e}");
+                            cancellation_token.cancel();
+                            return last_block_number_processed;
+                        }
+                    };
 
                     let mut metrics = metrics.lock().await;
                     for blk in blocks {
