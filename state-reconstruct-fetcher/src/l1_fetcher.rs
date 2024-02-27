@@ -341,10 +341,9 @@ impl L1Fetcher {
                         if current_l1_block_number < end_block_number {
                             current_l1_block_number = end_block_number;
                         } else {
-                            // current_l1_block_number ==
-                            // end_block_number, IOW no more blocks
-                            // can be retrieved until new ones are
-                            // added to L1
+                            // `current_l1_block_number == end_block_number`,
+                            // IOW, no more blocks can be retrieved until new ones
+                            // have been published on L1.
                             if disable_polling {
                                 tracing::debug!("Fetching finished...");
                                 return current_l1_block_number.as_u64();
