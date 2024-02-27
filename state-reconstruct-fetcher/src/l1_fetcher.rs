@@ -350,10 +350,9 @@ impl L1Fetcher {
                             }
 
                             current_l1_block_number = end_block_number + U64::one();
-                            // current_l1_block_number >
-                            // end_block_number, IOW end block will be
-                            // reset in the next iteration & updated
-                            // afterwards
+                            // `current_l1_block_number > end_block_number`,
+                            // IOW, end block will be reset in the next
+                            // iteration & updated afterwards.
                         }
                     } else {
                         // We haven't reached past `end_block` yet, stepping by [`BLOCK_STEP`].
