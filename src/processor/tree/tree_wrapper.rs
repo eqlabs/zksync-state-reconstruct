@@ -149,14 +149,8 @@ impl TreeWrapper {
     }
 
     fn insert_known_value(&mut self, key: U256, value: H256) {
-        if let Some(old_value) = self.key2value.insert(key, value) {
-            tracing::debug!(
-                "Updated value at {:?} from {:?} to {:?}",
-                key,
-                old_value,
-                value
-            );
-        }
+        let result = self.key2value.insert(key, value);
+        assert!(result.is_none());
     }
 }
 
