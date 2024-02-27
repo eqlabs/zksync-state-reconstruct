@@ -335,17 +335,29 @@ impl L1Fetcher {
 
                     let next_l1_block_number = current_l1_block_number + U64::from(BLOCK_STEP);
                     if next_l1_block_number > end_block_number {
+                        // Some of the BLOCKSTEP blocks asked for in
+                        // this iteration actually didn't exist yet -
+                        // must not skip them...
                         if current_l1_block_number < end_block_number {
                             current_l1_block_number = end_block_number;
                         } else {
+                            // current_l1_block_number ==
+                            // end_block_number, IOW no more blocks
+                            // can be retrieved until new ones are
+                            // added to L1
                             if disable_polling {
                                 tracing::debug!("Fetching finished...");
                                 return current_l1_block_number.as_u64();
                             }
 
                             current_l1_block_number = end_block_number + U64::one();
+                            // current_l1_block_number >
+                            // end_block_number, IOW end block will be
+                            // reset in the next iterationn & updated
+                            // afterwards
                         }
                     } else {
+                        // not at the end, stepping by BLOCKSTEP
                         current_l1_block_number = next_l1_block_number;
                     }
                 }
