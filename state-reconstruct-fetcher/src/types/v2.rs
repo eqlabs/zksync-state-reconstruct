@@ -2,7 +2,7 @@ use ethers::{abi, types::U256};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    common::{read_compressed_value, read_next_n_bytes},
+    common::{read_compressed_value, read_next_n_bytes, ExtractedToken},
     CommitBlockFormat, CommitBlockInfo, L2ToL1Pubdata, ParseError,
 };
 use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
@@ -159,82 +159,4 @@ fn parse_compressed_state_diffs(
     }
 
     Ok(state_diffs)
-}
-
-struct ExtractedToken {
-    new_l2_block_number: U256,
-    timestamp: U256,
-    new_enumeration_index: U256,
-    state_root: Vec<u8>,
-    number_of_l1_txs: U256,
-    priority_operations_hash: Vec<u8>,
-    system_logs: Vec<u8>,
-    total_l2_to_l1_pubdata: Vec<u8>,
-}
-
-impl TryFrom<&abi::Token> for ExtractedToken {
-    type Error = ParseError;
-
-    fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
-        let abi::Token::Tuple(block_elems) = token else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "struct elements".to_string(),
-            ));
-        };
-
-        let abi::Token::Uint(new_l2_block_number) = block_elems[0].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "blockNumber".to_string(),
-            ));
-        };
-
-        let abi::Token::Uint(timestamp) = block_elems[1].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()));
-        };
-
-        let abi::Token::Uint(new_enumeration_index) = block_elems[2].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "indexRepeatedStorageChanges".to_string(),
-            ));
-        };
-
-        let abi::Token::FixedBytes(state_root) = block_elems[3].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "newStateRoot".to_string(),
-            ));
-        };
-
-        let abi::Token::Uint(number_of_l1_txs) = block_elems[4].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "numberOfLayer1Txs".to_string(),
-            ));
-        };
-
-        let abi::Token::FixedBytes(priority_operations_hash) = block_elems[5].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "priorityOperationsHash".to_string(),
-            ));
-        };
-
-        let abi::Token::Bytes(system_logs) = block_elems[8].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo("systemLogs".to_string()));
-        };
-
-        let abi::Token::Bytes(total_l2_to_l1_pubdata) = block_elems[9].clone() else {
-            return Err(ParseError::InvalidCommitBlockInfo(
-                "totalL2ToL1Pubdata".to_string(),
-            ));
-        };
-
-        Ok(Self {
-            new_l2_block_number,
-            timestamp,
-            new_enumeration_index,
-            state_root,
-            number_of_l1_txs,
-            priority_operations_hash,
-            system_logs,
-            total_l2_to_l1_pubdata,
-        })
-    }
 }
