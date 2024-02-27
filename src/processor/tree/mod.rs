@@ -81,7 +81,6 @@ impl Processor for TreeProcessor {
 
             let mut before = Instant::now();
             if self.tree.insert_block(&block).await.is_err() {
-                tracing::warn!("Shutting down tree processor...");
                 return;
             }
 
