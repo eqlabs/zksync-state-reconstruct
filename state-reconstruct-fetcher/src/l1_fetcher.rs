@@ -335,9 +335,9 @@ impl L1Fetcher {
 
                     let next_l1_block_number = current_l1_block_number + U64::from(BLOCK_STEP);
                     if next_l1_block_number > end_block_number {
-                        // Some of the BLOCKSTEP blocks asked for in
-                        // this iteration actually didn't exist yet -
-                        // must not skip them...
+                        // Some of the BLOCKSTEP blocks asked for in this iteration
+                        // probably didn't exist yet, so we set `current_l1_block_number`
+                        // appropriately as to not skip them.
                         if current_l1_block_number < end_block_number {
                             current_l1_block_number = end_block_number;
                         } else {
