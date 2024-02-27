@@ -260,7 +260,11 @@ impl L1Fetcher {
                     };
 
                     if current_l1_block_number > end_block_number {
-                        // This function must not be called w/ current_l1_block_number > end_block_number .
+                        // Any place in this function that increases `current_l1_block_number`
+                        // beyond end_block_number must check the `disabled_polling`
+                        // case first.
+                        // For external callers, this function must not be called w/
+                        // `current_l1_block_number > end_block_number`.
                         assert!(!disable_polling);
                         tracing::debug!("Waiting for upstream to move on...");
                         tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
