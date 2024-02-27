@@ -1,4 +1,3 @@
-// TODO: Consider using some FSM for parsing this?
 use ethers::{
     abi::{self},
     types::U256,
