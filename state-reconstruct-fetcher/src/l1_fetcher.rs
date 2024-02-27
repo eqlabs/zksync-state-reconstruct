@@ -356,7 +356,7 @@ impl L1Fetcher {
                             // afterwards
                         }
                     } else {
-                        // not at the end, stepping by BLOCKSTEP
+                        // We haven't reached past `end_block` yet, stepping by [`BLOCK_STEP`].
                         current_l1_block_number = next_l1_block_number;
                     }
                 }
