@@ -103,7 +103,7 @@ impl TreeWrapper {
             Ok(root_hash)
         } else {
             tracing::error!(
-                "Root hash mismatch: {:?} vs. {:?}",
+                "Root hash mismatch!\nLocal: {:?}\nPublished: {:?}",
                 root_hash_bytes,
                 block.new_state_root
             );
