@@ -4,7 +4,7 @@
 use std::io::{self, Read};
 
 use serde::de::DeserializeOwned;
-use serde_json::{self, Deserializer};
+use serde_json::Deserializer;
 
 fn read_skipping_ws(mut reader: impl Read) -> io::Result<u8> {
     loop {
