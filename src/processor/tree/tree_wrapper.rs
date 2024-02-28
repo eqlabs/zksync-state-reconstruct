@@ -21,8 +21,8 @@ pub enum TreeError {
 }
 
 pub struct TreeWrapper {
-    index2key: HashMap<u64, U256>,
-    key2value: HashMap<U256, H256>,
+    index_to_key: HashMap<u64, U256>,
+    key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
     snapshot: Arc<Mutex<InnerDB>>,
 }
@@ -43,8 +43,8 @@ impl TreeWrapper {
         }
 
         Ok(Self {
-            index2key: HashMap::new(),
-            key2value: HashMap::new(),
+            index_to_key: HashMap::new(),
+            key_to_value: HashMap::new(),
             tree,
             snapshot,
         })
@@ -107,9 +107,9 @@ impl TreeWrapper {
                 root_hash_bytes,
                 block.new_state_root
             );
-            let mut rollback_entries = Vec::with_capacity(self.index2key.len());
-            for (index, key) in &self.index2key {
-                let value = self.key2value.get(key).unwrap();
+            let mut rollback_entries = Vec::with_capacity(self.index_to_key.len());
+            for (index, key) in &self.index_to_key {
+                let value = self.key_to_value.get(key).unwrap();
                 rollback_entries.push(TreeEntry::new(*key, *index, *value));
             }
 
@@ -139,18 +139,18 @@ impl TreeWrapper {
     }
 
     fn clear_known_base(&mut self) {
-        self.index2key.clear();
-        self.key2value.clear();
+        self.index_to_key.clear();
+        self.key_to_value.clear();
     }
 
     fn insert_known_key(&mut self, index: u64, key: U256) {
-        if let Some(old_key) = self.index2key.insert(index, key) {
+        if let Some(old_key) = self.index_to_key.insert(index, key) {
             assert_eq!(old_key, key);
         }
     }
 
     fn insert_known_value(&mut self, key: U256, value: H256) {
-        if let Some(old_value) = self.key2value.insert(key, value) {
+        if let Some(old_value) = self.key_to_value.insert(key, value) {
             tracing::debug!(
                 "Updated value at {:?} from {:?} to {:?}",
                 key,
