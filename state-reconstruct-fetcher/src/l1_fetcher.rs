@@ -458,10 +458,11 @@ impl L1Fetcher {
                     }
 
                     let before = Instant::now();
-                    let block_number = tx
-                        .block_number
-                        .expect("transaction has no block number")
-                        .as_u64();
+                    let Some(block_number) = tx.block_number else {
+                        tracing::error!("transaction has no block number");
+                        break;
+                    };
+                    let block_number = block_number.as_u64();
 
                     if !boojum_mode && block_number >= BOOJUM_BLOCK {
                         tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
