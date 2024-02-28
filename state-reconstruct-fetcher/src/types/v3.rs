@@ -31,7 +31,6 @@ impl TryFrom<u8> for PubdataSource {
 }
 
 /// Data needed to commit new block
-#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct V3 {
     pub pubdata_source: PubdataSource,

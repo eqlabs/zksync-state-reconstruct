@@ -8,7 +8,6 @@ use super::{
 use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
 
 /// Data needed to commit new block
-#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct V2 {
     /// L2 block number.
