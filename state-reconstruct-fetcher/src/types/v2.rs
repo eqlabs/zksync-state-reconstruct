@@ -2,7 +2,7 @@ use ethers::{abi, types::U256};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    common::{read_compressed_value, read_next_n_bytes, ExtractedToken},
+    common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
     CommitBlockFormat, CommitBlockInfo, L2ToL1Pubdata, ParseError,
 };
 use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
@@ -94,68 +94,8 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     }
 
     // Parse compressed state diffs.
-    let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer)?;
+    let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer, 0)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
 
     Ok(l2_to_l1_pubdata)
-}
-
-fn parse_compressed_state_diffs(
-    bytes: &[u8],
-    pointer: &mut usize,
-) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut state_diffs = Vec::new();
-    // Parse the header.
-    let version = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    if version != 1 {
-        return Err(ParseError::InvalidCompressedValue(String::from(
-            "VersionMismatch",
-        )));
-    }
-
-    if *pointer >= bytes.len() {
-        return Ok(state_diffs);
-    }
-
-    let mut buffer = [0; 4];
-    buffer[1..].copy_from_slice(&bytes[*pointer..*pointer + 3]);
-    *pointer += 3;
-    let _total_compressed_len = u32::from_be_bytes(buffer);
-
-    let enumeration_index = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
-
-    // Parse initial writes.
-    let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    for _ in 0..num_of_initial_writes {
-        let derived_key = U256::from_big_endian(&read_next_n_bytes::<32>(bytes, pointer));
-
-        let packing_type = read_compressed_value(bytes, pointer)?;
-        state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_repeated_write: false,
-            derived_key,
-            packing_type,
-        });
-    }
-
-    // Parse repeated writes.
-    while *pointer < bytes.len() {
-        let derived_key = match enumeration_index {
-            4 => U256::from_big_endian(&read_next_n_bytes::<4>(bytes, pointer)),
-            5 => U256::from_big_endian(&read_next_n_bytes::<5>(bytes, pointer)),
-            _ => {
-                return Err(ParseError::InvalidCompressedValue(String::from(
-                    "RepeatedDerivedKey",
-                )))
-            }
-        };
-
-        let packing_type = read_compressed_value(bytes, pointer)?;
-        state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
-            is_repeated_write: true,
-            derived_key,
-            packing_type,
-        });
-    }
-
-    Ok(state_diffs)
 }
