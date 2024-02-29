@@ -1,4 +1,4 @@
-use std::{fs, path::Path, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fs, path::Path, str::FromStr, sync::Arc};
 
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
@@ -8,12 +8,21 @@ use state_reconstruct_fetcher::{
     database::InnerDB,
     types::{v2::PackingType, CommitBlock},
 };
+use thiserror::Error;
 use tokio::sync::Mutex;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 
 use super::RootHash;
 
+#[derive(Error, Debug)]
+pub enum TreeError {
+    #[error("block mismatch")]
+    BlockMismatch,
+}
+
 pub struct TreeWrapper {
+    index_to_key: HashMap<u64, U256>,
+    key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
     snapshot: Arc<Mutex<InnerDB>>,
 }
@@ -33,17 +42,24 @@ impl TreeWrapper {
             reconstruct_genesis_state(&mut tree, &mut guard, INITAL_STATE_PATH)?;
         }
 
-        Ok(Self { tree, snapshot })
+        Ok(Self {
+            index_to_key: HashMap::new(),
+            key_to_value: HashMap::new(),
+            tree,
+            snapshot,
+        })
     }
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
-    pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
+    pub async fn insert_block(&mut self, block: &CommitBlock) -> Result<RootHash> {
+        self.clear_known_base();
         let mut tree_entries = Vec::with_capacity(block.initial_storage_changes.len());
         // INITIAL CALLDATA.
         let mut index =
             block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
         for (key, value) in &block.initial_storage_changes {
             let key = U256::from_little_endian(key);
+            self.insert_known_key(index, key);
             let value = self.process_value(key, *value);
 
             tree_entries.push(TreeEntry::new(key, index, value));
@@ -65,6 +81,7 @@ impl TreeWrapper {
                 .await
                 .get_key(index - 1)
                 .expect("invalid key index");
+            self.insert_known_key(index, key);
             let value = self.process_value(key, *value);
 
             tree_entries.push(TreeEntry::new(key, index, value));
@@ -79,35 +96,68 @@ impl TreeWrapper {
             hex::encode(root_hash)
         );
 
-        assert_eq!(root_hash.as_bytes(), block.new_state_root);
-        tracing::debug!("Successfully processed block {}", block.l2_block_number);
+        let root_hash_bytes = root_hash.as_bytes();
+        if root_hash_bytes == block.new_state_root {
+            tracing::debug!("Successfully processed block {}", block.l2_block_number);
 
-        root_hash
+            Ok(root_hash)
+        } else {
+            tracing::error!(
+                "Root hash mismatch!\nLocal: {}\nPublished: {}",
+                hex::encode(root_hash_bytes),
+                hex::encode(&block.new_state_root)
+            );
+            let mut rollback_entries = Vec::with_capacity(self.index_to_key.len());
+            for (index, key) in &self.index_to_key {
+                let value = self.key_to_value.get(key).unwrap();
+                rollback_entries.push(TreeEntry::new(*key, *index, *value));
+            }
+
+            self.tree.extend(rollback_entries);
+            Err(TreeError::BlockMismatch.into())
+        }
     }
 
-    fn process_value(&self, key: U256, value: PackingType) -> H256 {
-        let processed_value = match value {
-            PackingType::NoCompression(v) | PackingType::Transform(v) => v,
-            PackingType::Add(_) | PackingType::Sub(_) => {
-                let version = self.tree.latest_version().unwrap_or_default();
-                if let Ok(leaf) = self.tree.entries(version, &[key]) {
-                    let hash = leaf.last().unwrap().value;
-                    let existing_value = U256::from(hash.to_fixed_bytes());
-                    // NOTE: We're explicitly allowing over-/underflow as per the spec.
-                    match value {
-                        PackingType::Add(v) => existing_value.overflowing_add(v).0,
-                        PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
-                        _ => unreachable!(),
-                    }
-                } else {
-                    panic!("no key found for version")
-                }
-            }
-        };
+    fn process_value(&mut self, key: U256, value: PackingType) -> H256 {
+        let version = self.tree.latest_version().unwrap_or_default();
+        if let Ok(leaf) = self.tree.entries(version, &[key]) {
+            let hash = leaf.last().unwrap().value;
+            self.insert_known_value(key, hash);
+            let existing_value = U256::from(hash.to_fixed_bytes());
+            // NOTE: We're explicitly allowing over-/underflow as per the spec.
+            let processed_value = match value {
+                PackingType::NoCompression(v) | PackingType::Transform(v) => v,
+                PackingType::Add(v) => existing_value.overflowing_add(v).0,
+                PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
+            };
+            let mut buffer = [0; 32];
+            processed_value.to_big_endian(&mut buffer);
+            H256::from(buffer)
+        } else {
+            panic!("no key found for version")
+        }
+    }
 
-        let mut buffer = [0; 32];
-        processed_value.to_big_endian(&mut buffer);
-        H256::from(buffer)
+    fn clear_known_base(&mut self) {
+        self.index_to_key.clear();
+        self.key_to_value.clear();
+    }
+
+    fn insert_known_key(&mut self, index: u64, key: U256) {
+        if let Some(old_key) = self.index_to_key.insert(index, key) {
+            assert_eq!(old_key, key);
+        }
+    }
+
+    fn insert_known_value(&mut self, key: U256, value: H256) {
+        if let Some(old_value) = self.key_to_value.insert(key, value) {
+            tracing::debug!(
+                "Updated value at {:?} from {:?} to {:?}",
+                key,
+                old_value,
+                value
+            );
+        }
     }
 }
 

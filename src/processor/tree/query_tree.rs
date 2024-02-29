@@ -38,6 +38,10 @@ impl QueryTree {
 
     fn query_root_hash(&self) -> RootHashQuery {
         RootHashQuery {
+            // Note that the L2 batch number will diverge from what's
+            // published on L1 in case `TreeWrapper::insert_block`
+            // fails (i.e. the program ends with Root hash mismatch
+            // error).
             batch: self.0.latest_version().unwrap_or_default(),
             root_hash: hex::encode(self.0.latest_root_hash()),
         }
