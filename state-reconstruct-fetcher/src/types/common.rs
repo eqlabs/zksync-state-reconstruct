@@ -88,7 +88,6 @@ impl TryFrom<&abi::Token> for ExtractedToken {
 pub fn parse_compressed_state_diffs(
     bytes: &[u8],
     pointer: &mut usize,
-    end_bytes_to_ignore: usize,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut state_diffs = Vec::new();
     // Parse the header.
@@ -124,7 +123,7 @@ pub fn parse_compressed_state_diffs(
     }
 
     // Parse repeated writes.
-    while *pointer < bytes.len() - end_bytes_to_ignore {
+    while *pointer < bytes.len() {
         let derived_key = match enumeration_index {
             4 => U256::from_big_endian(&read_next_n_bytes::<4>(bytes, pointer)),
             5 => U256::from_big_endian(&read_next_n_bytes::<5>(bytes, pointer)),

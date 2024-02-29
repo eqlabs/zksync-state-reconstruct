@@ -141,7 +141,8 @@ fn parse_pubdata_from_calldata(
 
     // Parse compressed state diffs.
     // NOTE: Is this correct? Ignoring the last 32 bytes?
-    let mut state_diffs = parse_compressed_state_diffs(bytes, pointer, 32)?;
+    let end_point = bytes.len() - 32;
+    let mut state_diffs = parse_compressed_state_diffs(&bytes[..end_point], pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
 
     Ok(l2_to_l1_pubdata)

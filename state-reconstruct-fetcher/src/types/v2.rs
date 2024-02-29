@@ -94,7 +94,7 @@ fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, Pa
     }
 
     // Parse compressed state diffs.
-    let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer, 0)?;
+    let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
 
     Ok(l2_to_l1_pubdata)
