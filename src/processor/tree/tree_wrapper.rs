@@ -105,7 +105,7 @@ impl TreeWrapper {
             tracing::error!(
                 "Root hash mismatch!\nLocal: {}\nPublished: {}",
                 hex::encode(root_hash_bytes),
-                hex::encode(block.new_state_root.clone())
+                hex::encode(&block.new_state_root)
             );
             let mut rollback_entries = Vec::with_capacity(self.index_to_key.len());
             for (index, key) in &self.index_to_key {
