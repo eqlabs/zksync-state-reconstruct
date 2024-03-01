@@ -1,16 +1,16 @@
-use ethers::abi;
+use ethers::{abi, types::U256};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json_any_key::any_key_map;
 use thiserror::Error;
 
-use self::{
-    v1::V1,
-    v2::{L2ToL1Pubdata, PackingType, V2},
-};
+use self::{v1::V1, v2::V2, v3::V3};
 
+// NOTE: We should probably make these more human-readable.
+pub mod common;
 pub mod v1;
 pub mod v2;
+pub mod v3;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Error, Debug)]
@@ -30,6 +30,29 @@ pub enum ParseError {
 
     #[error("invalid compressed value: {0}")]
     InvalidCompressedValue(String),
+
+    #[error("invalid pubdata source: {0}")]
+    InvalidPubdataSource(String),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PackingType {
+    Add(U256),
+    Sub(U256),
+    Transform(U256),
+    NoCompression(U256),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum L2ToL1Pubdata {
+    L2ToL1Log(Vec<u8>),
+    L2ToL2Message(Vec<u8>),
+    PublishedBytecode(Vec<u8>),
+    CompressedStateDiff {
+        is_repeated_write: bool,
+        derived_key: U256,
+        packing_type: PackingType,
+    },
 }
 
 pub trait CommitBlockFormat {
@@ -40,6 +63,7 @@ pub trait CommitBlockFormat {
 pub enum CommitBlockInfo {
     V1(V1),
     V2(V2),
+    V3(V3),
 }
 
 /// Block with all required fields extracted from a [`CommitBlockInfo`].
@@ -93,6 +117,41 @@ impl CommitBlock {
                 factory_deps: block.factory_deps,
             },
             CommitBlockInfo::V2(block) => {
+                let mut initial_storage_changes = IndexMap::new();
+                let mut repeated_storage_changes = IndexMap::new();
+                let mut factory_deps = Vec::new();
+                for log in block.total_l2_to_l1_pubdata {
+                    match log {
+                        L2ToL1Pubdata::L2ToL1Log(_) | L2ToL1Pubdata::L2ToL2Message(_) => (),
+                        L2ToL1Pubdata::PublishedBytecode(bytecode) => factory_deps.push(bytecode),
+                        L2ToL1Pubdata::CompressedStateDiff {
+                            is_repeated_write,
+                            derived_key,
+                            packing_type,
+                        } => {
+                            let mut key = [0u8; 32];
+                            derived_key.to_big_endian(&mut key);
+
+                            if is_repeated_write {
+                                repeated_storage_changes.insert(derived_key.as_u64(), packing_type);
+                            } else {
+                                initial_storage_changes.insert(key, packing_type);
+                            };
+                        }
+                    }
+                }
+
+                CommitBlock {
+                    l1_block_number: None,
+                    l2_block_number: block.block_number,
+                    index_repeated_storage_changes: block.index_repeated_storage_changes,
+                    new_state_root: block.new_state_root,
+                    initial_storage_changes,
+                    repeated_storage_changes,
+                    factory_deps,
+                }
+            }
+            CommitBlockInfo::V3(block) => {
                 let mut initial_storage_changes = IndexMap::new();
                 let mut repeated_storage_changes = IndexMap::new();
                 let mut factory_deps = Vec::new();

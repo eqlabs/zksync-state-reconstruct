@@ -14,10 +14,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
     metrics::L1Metrics,
-    types::{v1::V1, v2::V2, CommitBlock, ParseError},
+    types::{v1::V1, v2::V2, v3::V3, CommitBlock, ParseError},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
@@ -458,32 +458,27 @@ impl L1Fetcher {
                     }
 
                     let before = Instant::now();
-                    let block_number = tx.block_number.map(|v| v.as_u64());
+                    let Some(block_number) = tx.block_number else {
+                        tracing::error!("transaction has no block number");
+                        break;
+                    };
+                    let block_number = block_number.as_u64();
 
-                    if !boojum_mode {
-                        if let Some(block_number) = block_number {
-                            if block_number >= BOOJUM_BLOCK {
-                                tracing::debug!(
-                                    "Reached `BOOJUM_BLOCK`, changing commit block format"
-                                );
-                                boojum_mode = true;
-                                function = contracts.v2.functions_by_name("commitBatches").unwrap()
-                                    [0]
-                                .clone();
-                            }
-                        }
+                    if !boojum_mode && block_number >= BOOJUM_BLOCK {
+                        tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
+                        boojum_mode = true;
+                        function =
+                            contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
                     }
 
-                    let blocks =
-                        match parse_calldata(block_number, boojum_mode, &function, &tx.input).await
-                        {
-                            Ok(blks) => blks,
-                            Err(e) => {
-                                tracing::error!("Failed to parse calldata: {e}");
-                                cancellation_token.cancel();
-                                return last_block_number_processed;
-                            }
-                        };
+                    let blocks = match parse_calldata(block_number, &function, &tx.input).await {
+                        Ok(blks) => blks,
+                        Err(e) => {
+                            tracing::error!("Failed to parse calldata: {e}");
+                            cancellation_token.cancel();
+                            return last_block_number_processed;
+                        }
+                    };
 
                     let mut metrics = metrics.lock().await;
                     for blk in blocks {
@@ -500,7 +495,7 @@ impl L1Fetcher {
                         }
                     }
 
-                    last_block_number_processed = block_number;
+                    last_block_number_processed = Some(block_number);
                     let duration = before.elapsed();
                     metrics.parsing.add(duration);
                 }
@@ -529,8 +524,7 @@ impl L1Fetcher {
 }
 
 pub async fn parse_calldata(
-    l1_block_number: Option<u64>,
-    boojum_mode: bool,
+    l1_block_number: u64,
     commit_blocks_fn: &Function,
     calldata: &[u8],
 ) -> Result<Vec<CommitBlock>> {
@@ -572,17 +566,17 @@ pub async fn parse_calldata(
     };
 
     // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
-    let mut block_infos = parse_commit_block_info(&new_blocks_data, boojum_mode).await?;
+    let mut block_infos = parse_commit_block_info(&new_blocks_data, l1_block_number).await?;
     // Supplement every `CommitBlock` element with L1 block number information.
     block_infos
         .iter_mut()
-        .for_each(|e| e.l1_block_number = l1_block_number);
+        .for_each(|e| e.l1_block_number = Some(l1_block_number));
     Ok(block_infos)
 }
 
 async fn parse_commit_block_info(
     data: &abi::Token,
-    use_new_format: bool,
+    l1_block_number: u64,
 ) -> Result<Vec<CommitBlock>> {
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
@@ -593,10 +587,14 @@ async fn parse_commit_block_info(
 
     let mut result = vec![];
     for d in data {
-        let commit_block = if use_new_format {
-            CommitBlock::try_from_token::<V2>(d)?
-        } else {
-            CommitBlock::try_from_token::<V1>(d)?
+        let commit_block = {
+            if l1_block_number >= BLOB_BLOCK {
+                CommitBlock::try_from_token::<V3>(d)?
+            } else if l1_block_number >= BOOJUM_BLOCK {
+                CommitBlock::try_from_token::<V2>(d)?
+            } else {
+                CommitBlock::try_from_token::<V1>(d)?
+            }
         };
 
         result.push(commit_block);

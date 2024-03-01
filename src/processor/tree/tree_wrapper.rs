@@ -6,7 +6,7 @@ use eyre::Result;
 use state_reconstruct_fetcher::{
     constants::storage::INITAL_STATE_PATH,
     database::InnerDB,
-    types::{v2::PackingType, CommitBlock},
+    types::{CommitBlock, PackingType},
 };
 use thiserror::Error;
 use tokio::sync::Mutex;
