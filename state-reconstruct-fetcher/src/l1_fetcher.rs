@@ -1,4 +1,4 @@
-use std::{fs::File, future::Future, sync::Arc};
+use std::{cmp, fs::File, future::Future, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -275,15 +275,13 @@ impl L1Fetcher {
                     // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
                     // TODO: Filter by executed blocks too.
                     // Don't go beyond `end_block_number` - tip of the chain might still change.
-                    let mut last_l1_block_number = current_l1_block_number + BLOCK_STEP - 1;
-                    if last_l1_block_number > end_block_number {
-                        last_l1_block_number = end_block_number;
-                    }
+                    let filter_end_block_number =
+                        cmp::min(current_l1_block_number + BLOCK_STEP - 1, end_block_number);
                     let filter = Filter::new()
                         .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
                         .topic0(event.signature())
                         .from_block(current_l1_block_number)
-                        .to_block(last_l1_block_number);
+                        .to_block(filter_end_block_number);
 
                     // Grab all relevant logs.
                     let before = Instant::now();
