@@ -21,6 +21,7 @@ use state_reconstruct_fetcher::{
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
     types::CommitBlock,
 };
+use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
@@ -32,6 +33,9 @@ use crate::{
     },
     util::json,
 };
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn start_logger(default_level: LevelFilter) {
     let filter = match EnvFilter::try_from_default_env() {
