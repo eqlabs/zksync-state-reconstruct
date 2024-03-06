@@ -26,6 +26,7 @@ serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
 state-reconstruct-fetcher = { path = "./state-reconstruct-fetcher" }
 thiserror = "1.0.50"
+tikv-jemallocator = "0.5"
 tokio = { version = "1.33.0", features = ["macros"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
