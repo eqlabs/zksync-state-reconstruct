@@ -9,8 +9,7 @@ pub mod ethereum {
     pub const BOOJUM_BLOCK: u64 = 18_715_403;
 
     /// Block number in Ethereum of the first block storing pubdata within blobs.
-    // NOTE: Not actual number, TBD.
-    pub const BLOB_BLOCK: u64 = 80_715_403;
+    pub const BLOB_BLOCK: u64 = 19_412_473;
 
     /// zkSync smart contract address.
     pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
