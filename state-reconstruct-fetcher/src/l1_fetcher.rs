@@ -45,6 +45,8 @@ pub enum L1FetchError {
 pub struct L1FetcherOptions {
     /// The Ethereum JSON-RPC HTTP URL to use.
     pub http_url: String,
+    /// The Ethereum blob storage URL base.
+    pub blobs_url: String,
     /// Ethereum block number to start state import from.
     pub start_block: u64,
     /// The number of blocks to filter & process in one step over.

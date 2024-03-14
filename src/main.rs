@@ -16,11 +16,7 @@ use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
 use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
-use state_reconstruct_fetcher::{
-    constants::storage,
-    l1_fetcher::{L1Fetcher, L1FetcherOptions},
-    types::CommitBlock,
-};
+use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
@@ -71,14 +67,7 @@ async fn main() -> Result<()> {
 
             match source {
                 ReconstructSource::L1 { l1_fetcher_options } => {
-                    let fetcher_options = L1FetcherOptions {
-                        http_url: l1_fetcher_options.http_url,
-                        start_block: l1_fetcher_options.start_block,
-                        block_step: l1_fetcher_options.block_step,
-                        block_count: l1_fetcher_options.block_count,
-                        disable_polling: l1_fetcher_options.disable_polling,
-                    };
-
+                    let fetcher_options = l1_fetcher_options.into();
                     let processor = TreeProcessor::new(db_path.clone()).await?;
                     let fetcher = L1Fetcher::new(fetcher_options, Some(processor.get_snapshot()))?;
                     let (tx, rx) = mpsc::channel::<CommitBlock>(5);
@@ -114,14 +103,7 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             file,
         } => {
-            let fetcher_options = L1FetcherOptions {
-                http_url: l1_fetcher_options.http_url,
-                start_block: l1_fetcher_options.start_block,
-                block_step: l1_fetcher_options.block_step,
-                block_count: l1_fetcher_options.block_count,
-                disable_polling: l1_fetcher_options.disable_polling,
-            };
-
+            let fetcher_options = l1_fetcher_options.into();
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlock>(5);
@@ -158,14 +140,7 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             db_path,
         } => {
-            let fetcher_options = L1FetcherOptions {
-                http_url: l1_fetcher_options.http_url,
-                start_block: l1_fetcher_options.start_block,
-                block_step: l1_fetcher_options.block_step,
-                block_count: l1_fetcher_options.block_count,
-                disable_polling: l1_fetcher_options.disable_polling,
-            };
-
+            let fetcher_options = l1_fetcher_options.into();
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = SnapshotBuilder::new(db_path);
 

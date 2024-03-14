@@ -189,7 +189,6 @@ pub fn read_next_n_bytes<const N: usize>(bytes: &[u8], pointer: &mut usize) -> [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::PackingType;
 
     #[test]
     fn parse_compressed_value_common() {

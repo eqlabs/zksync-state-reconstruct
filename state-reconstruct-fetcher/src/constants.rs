@@ -13,6 +13,9 @@ pub mod ethereum {
 
     /// zkSync smart contract address.
     pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
+
+    /// Default Ethereum blob storage URL base.
+    pub const BLOBS_URL: &str = "https://api.blobscan.com/blobs/";
 }
 
 pub mod storage {
@@ -33,4 +36,6 @@ pub mod zksync {
     pub const OPERATION_BITMASK: u8 = 7;
     // The number of bits shifting the compressed state diff metadata by which we retrieve its length.
     pub const LENGTH_BITS_OFFSET: u8 = 3;
+    // Size of CommitBatchInfo.pubdataCommitments item.
+    pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
 }
