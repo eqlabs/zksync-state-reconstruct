@@ -33,6 +33,12 @@ pub enum ParseError {
 
     #[error("invalid pubdata source: {0}")]
     InvalidPubdataSource(String),
+
+    #[error("blob storage error: {0}")]
+    BlobStorageError(String),
+
+    #[error("blob format error: {0}")]
+    BlobFormatError(String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -63,7 +69,6 @@ pub trait CommitBlockFormat {
 pub enum CommitBlockInfo {
     V1(V1),
     V2(V2),
-    V3(V3),
 }
 
 /// Block with all required fields extracted from a [`CommitBlockInfo`].
@@ -95,6 +100,15 @@ impl CommitBlock {
     {
         let commit_block_info = F::try_from(value)?;
         Ok(Self::from_commit_block(commit_block_info.to_enum_variant()))
+    }
+
+    pub async fn try_from_token_resolve<'a>(
+        value: &'a abi::Token,
+        client: &mut reqwest::Client,
+        blobs_url: &str,
+    ) -> Result<Self, ParseError> {
+        let commit_block_info = V3::try_from(value)?;
+        Self::from_commit_block_resolve(commit_block_info, client, blobs_url).await
     }
 
     pub fn from_commit_block(block_type: CommitBlockInfo) -> Self {
@@ -151,41 +165,47 @@ impl CommitBlock {
                     factory_deps,
                 }
             }
-            CommitBlockInfo::V3(block) => {
-                let mut initial_storage_changes = IndexMap::new();
-                let mut repeated_storage_changes = IndexMap::new();
-                let mut factory_deps = Vec::new();
-                for log in block.total_l2_to_l1_pubdata {
-                    match log {
-                        L2ToL1Pubdata::L2ToL1Log(_) | L2ToL1Pubdata::L2ToL2Message(_) => (),
-                        L2ToL1Pubdata::PublishedBytecode(bytecode) => factory_deps.push(bytecode),
-                        L2ToL1Pubdata::CompressedStateDiff {
-                            is_repeated_write,
-                            derived_key,
-                            packing_type,
-                        } => {
-                            let mut key = [0u8; 32];
-                            derived_key.to_big_endian(&mut key);
+        }
+    }
 
-                            if is_repeated_write {
-                                repeated_storage_changes.insert(derived_key.as_u64(), packing_type);
-                            } else {
-                                initial_storage_changes.insert(key, packing_type);
-                            };
-                        }
-                    }
-                }
+    pub async fn from_commit_block_resolve(
+        block: V3,
+        client: &mut reqwest::Client,
+        blobs_url: &str,
+    ) -> Result<Self, ParseError> {
+        let total_l2_to_l1_pubdata = block.parse_pubdata(client, blobs_url).await?;
+        let mut initial_storage_changes = IndexMap::new();
+        let mut repeated_storage_changes = IndexMap::new();
+        let mut factory_deps = Vec::new();
+        for log in total_l2_to_l1_pubdata {
+            match log {
+                L2ToL1Pubdata::L2ToL1Log(_) | L2ToL1Pubdata::L2ToL2Message(_) => (),
+                L2ToL1Pubdata::PublishedBytecode(bytecode) => factory_deps.push(bytecode),
+                L2ToL1Pubdata::CompressedStateDiff {
+                    is_repeated_write,
+                    derived_key,
+                    packing_type,
+                } => {
+                    let mut key = [0u8; 32];
+                    derived_key.to_big_endian(&mut key);
 
-                CommitBlock {
-                    l1_block_number: None,
-                    l2_block_number: block.block_number,
-                    index_repeated_storage_changes: block.index_repeated_storage_changes,
-                    new_state_root: block.new_state_root,
-                    initial_storage_changes,
-                    repeated_storage_changes,
-                    factory_deps,
+                    if is_repeated_write {
+                        repeated_storage_changes.insert(derived_key.as_u64(), packing_type);
+                    } else {
+                        initial_storage_changes.insert(key, packing_type);
+                    };
                 }
             }
         }
+
+        Ok(CommitBlock {
+            l1_block_number: None,
+            l2_block_number: block.block_number,
+            index_repeated_storage_changes: block.index_repeated_storage_changes,
+            new_state_root: block.new_state_root,
+            initial_storage_changes,
+            repeated_storage_changes,
+            factory_deps,
+        })
     }
 }

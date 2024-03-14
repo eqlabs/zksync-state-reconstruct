@@ -4574,6 +4574,7 @@ dependencies = [
  "hex",
  "indexmap 2.2.5",
  "rand 0.8.5",
+ "reqwest",
  "rocksdb",
  "serde",
  "serde_json",

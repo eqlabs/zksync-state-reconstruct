@@ -3,12 +3,19 @@ use ethers::{
     types::U256,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio::time::{sleep, Duration};
 
 use super::{
     common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
-    CommitBlockFormat, CommitBlockInfo, L2ToL1Pubdata, ParseError,
+    L2ToL1Pubdata, ParseError,
 };
-use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
+use crate::constants::zksync::{L2_TO_L1_LOG_SERIALIZE_SIZE, PUBDATA_COMMITMENT_SIZE};
+
+/// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
+const MAX_RETRIES: u8 = 5;
+/// The interval in seconds to wait before retrying to fetch a blob.
+const FAILED_FETCH_RETRY_INTERVAL_S: u64 = 10;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PubdataSource {
@@ -48,22 +55,14 @@ pub struct V3 {
     pub priority_operations_hash: Vec<u8>,
     /// Concatenation of all L2 -> L1 system logs in the block.
     pub system_logs: Vec<u8>,
-    /// Total pubdata committed to as part of bootloader run. Contents are: l2Tol1Logs <> l2Tol1Messages <> publishedBytecodes <> stateDiffs.
-    pub total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
-}
-
-impl CommitBlockFormat for V3 {
-    fn to_enum_variant(self) -> CommitBlockInfo {
-        CommitBlockInfo::V3(self)
-    }
+    /// Unparsed blob commitments; must be either parsed, or parsed and resolved using some blob storage server (depending on `pubdata_source`).
+    pub pubdata_commitments: Vec<u8>,
 }
 
 impl TryFrom<&abi::Token> for V3 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
-    ///
-    /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
+    /// Try to parse Ethereum ABI token.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
             new_l2_block_number,
@@ -79,8 +78,8 @@ impl TryFrom<&abi::Token> for V3 {
 
         let mut pointer = 0;
         let pubdata_source = parse_pubdata_source(&total_l2_to_l1_pubdata, &mut pointer)?;
-        let total_l2_to_l1_pubdata =
-            parse_total_l2_to_l1_pubdata(&total_l2_to_l1_pubdata, &mut pointer, pubdata_source)?;
+        let pubdata_commitments =
+            total_l2_to_l1_pubdata[pointer..total_l2_to_l1_pubdata.len()].to_vec();
         let blk = V3 {
             pubdata_source,
             block_number: new_l2_block_number.as_u64(),
@@ -90,10 +89,27 @@ impl TryFrom<&abi::Token> for V3 {
             number_of_l1_txs,
             priority_operations_hash,
             system_logs,
-            total_l2_to_l1_pubdata,
+            pubdata_commitments,
         };
 
         Ok(blk)
+    }
+}
+
+impl V3 {
+    pub async fn parse_pubdata(
+        &self,
+        client: &mut reqwest::Client,
+        blobs_url: &str,
+    ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+        let mut pointer = 0;
+        let bytes = &self.pubdata_commitments[..];
+        match self.pubdata_source {
+            PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, &mut pointer, true),
+            PubdataSource::Blob => {
+                parse_pubdata_from_blobs(bytes, &mut pointer, client, blobs_url).await
+            }
+        }
     }
 }
 
@@ -103,20 +119,10 @@ fn parse_pubdata_source(bytes: &[u8], pointer: &mut usize) -> Result<PubdataSour
     pubdata_source.try_into()
 }
 
-fn parse_total_l2_to_l1_pubdata(
-    bytes: &[u8],
-    pointer: &mut usize,
-    pubdata_source: PubdataSource,
-) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    match pubdata_source {
-        PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, pointer),
-        PubdataSource::Blob => todo!(),
-    }
-}
-
 fn parse_pubdata_from_calldata(
     bytes: &[u8],
     pointer: &mut usize,
+    shorten: bool,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut l2_to_l1_pubdata = Vec::new();
 
@@ -141,9 +147,102 @@ fn parse_pubdata_from_calldata(
 
     // Parse compressed state diffs.
     // NOTE: Is this correct? Ignoring the last 32 bytes?
-    let end_point = bytes.len() - 32;
-    let mut state_diffs = parse_compressed_state_diffs(&bytes[..end_point], pointer)?;
+    let diff_bytes = if shorten {
+        let end_point = bytes.len() - 32;
+        &bytes[..end_point]
+    } else {
+        bytes
+    };
+    let mut state_diffs = parse_compressed_state_diffs(diff_bytes, pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
 
     Ok(l2_to_l1_pubdata)
+}
+
+async fn parse_pubdata_from_blobs(
+    bytes: &[u8],
+    pointer: &mut usize,
+    client: &mut reqwest::Client,
+    blobs_url: &str,
+) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+    let l = bytes.len() - *pointer;
+    while *pointer < l {
+        let pubdata_commitment = &bytes[*pointer..*pointer + PUBDATA_COMMITMENT_SIZE];
+        let _blob = get_blob(&pubdata_commitment[48..96], client, blobs_url).await?;
+        *pointer += PUBDATA_COMMITMENT_SIZE;
+    }
+    todo!()
+}
+
+async fn get_blob(
+    kzg_commitment: &[u8],
+    client: &mut reqwest::Client,
+    blobs_url: &str,
+) -> Result<Vec<u8>, ParseError> {
+    let url = format!("{}0x{}", blobs_url, hex::encode(kzg_commitment));
+    for attempt in 1..=MAX_RETRIES {
+        match client.get(url.clone()).send().await {
+            Ok(response) => match response.text().await {
+                Ok(text) => match get_blob_data(&text) {
+                    Ok(data) => {
+                        let plain = if let Some(p) = data.strip_prefix("0x") {
+                            p
+                        } else {
+                            &data
+                        };
+                        match hex::decode(plain) {
+                            Ok(bytes) => return Ok(bytes),
+                            Err(e) => {
+                                tracing::warn!("Cannot parse {}: {:?}", plain, e);
+                                return Err(ParseError::BlobFormatError("not hex".to_string()));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("failed parsing response of {url}");
+                        return Err(e);
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("attempt {}: {} failed: {:?}", attempt, url, e);
+                    sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
+                }
+            },
+            Err(e) => {
+                tracing::error!("attempt {}: GET {} failed: {:?}", attempt, url, e);
+                sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
+            }
+        }
+    }
+    Err(ParseError::BlobStorageError(url))
+}
+
+fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
+    if let Ok(v) = serde_json::from_str(json_str) {
+        if let Value::Object(m) = v {
+            if let Some(d) = m.get("data") {
+                if let Value::String(s) = d {
+                    Ok(s.clone())
+                } else {
+                    tracing::warn!("Cannot parse {json_str} - data is not string.");
+                    Err(ParseError::BlobFormatError(
+                        "data is not string".to_string(),
+                    ))
+                }
+            } else {
+                tracing::warn!("Cannot parse {json_str} - no data in response.");
+                Err(ParseError::BlobFormatError(
+                    "no data in response".to_string(),
+                ))
+            }
+        } else {
+            tracing::warn!("Cannot parse {json_str} - data is not object.");
+            Err(ParseError::BlobFormatError(
+                "data is not object".to_string(),
+            ))
+        }
+    } else {
+        tracing::warn!("Cannot parse {json_str} - not JSON.");
+        Err(ParseError::BlobFormatError("not JSON".to_string()))
+    }
 }
