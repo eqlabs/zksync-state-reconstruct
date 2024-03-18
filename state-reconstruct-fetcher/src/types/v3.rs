@@ -100,7 +100,7 @@ impl TryFrom<&abi::Token> for V3 {
 impl V3 {
     pub async fn parse_pubdata(
         &self,
-        client: &mut reqwest::Client,
+        client: &reqwest::Client,
         blobs_url: &str,
     ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
         let mut pointer = 0;
@@ -163,7 +163,7 @@ fn parse_pubdata_from_calldata(
 async fn parse_pubdata_from_blobs(
     bytes: &[u8],
     pointer: &mut usize,
-    client: &mut reqwest::Client,
+    client: &reqwest::Client,
     blobs_url: &str,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut l = bytes.len() - *pointer;
@@ -188,7 +188,7 @@ async fn parse_pubdata_from_blobs(
 
 async fn get_blob(
     kzg_commitment: &[u8],
-    client: &mut reqwest::Client,
+    client: &reqwest::Client,
     blobs_url: &str,
 ) -> Result<Vec<u8>, ParseError> {
     let url = format!("{}0x{}", blobs_url, hex::encode(kzg_commitment));

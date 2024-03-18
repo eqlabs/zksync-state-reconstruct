@@ -104,7 +104,7 @@ impl CommitBlock {
 
     pub async fn try_from_token_resolve<'a>(
         value: &'a abi::Token,
-        client: &mut reqwest::Client,
+        client: &reqwest::Client,
         blobs_url: &str,
     ) -> Result<Self, ParseError> {
         let commit_block_info = V3::try_from(value)?;
@@ -170,7 +170,7 @@ impl CommitBlock {
 
     pub async fn from_commit_block_resolve(
         block: V3,
-        client: &mut reqwest::Client,
+        client: &reqwest::Client,
         blobs_url: &str,
     ) -> Result<Self, ParseError> {
         let total_l2_to_l1_pubdata = block.parse_pubdata(client, blobs_url).await?;

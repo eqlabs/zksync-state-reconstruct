@@ -449,7 +449,7 @@ impl L1Fetcher {
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
-        let mut client = make_client()?;
+        let client = make_client()?;
         let blobs_url = self.config.blobs_url.clone();
         Ok(tokio::spawn({
             async move {
@@ -483,7 +483,7 @@ impl L1Fetcher {
                             block_number,
                             &function,
                             &tx.input,
-                            &mut client,
+                            &client,
                             &blobs_url,
                         )
                         .await
@@ -565,7 +565,7 @@ pub async fn parse_calldata(
     l1_block_number: u64,
     commit_blocks_fn: &Function,
     calldata: &[u8],
-    client: &mut reqwest::Client,
+    client: &reqwest::Client,
     blobs_url: &str,
 ) -> Result<Vec<CommitBlock>, ParseError> {
     let mut parsed_input = commit_blocks_fn
@@ -617,7 +617,7 @@ pub async fn parse_calldata(
 async fn parse_commit_block_info(
     data: &abi::Token,
     l1_block_number: u64,
-    client: &mut reqwest::Client,
+    client: &reqwest::Client,
     blobs_url: &str,
 ) -> Result<Vec<CommitBlock>, ParseError> {
     let abi::Token::Array(data) = data else {
