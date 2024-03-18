@@ -5,6 +5,7 @@ use ethers::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::time::{sleep, Duration};
+use zkevm_circuits::eip_4844::ethereum_4844_data_into_zksync_pubdata;
 
 use super::{
     common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
@@ -166,9 +167,12 @@ async fn parse_pubdata_from_blobs(
     blobs_url: &str,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let l = bytes.len() - *pointer;
+    let mut blobs = Vec::new();
     while *pointer < l {
         let pubdata_commitment = &bytes[*pointer..*pointer + PUBDATA_COMMITMENT_SIZE];
-        let _blob = get_blob(&pubdata_commitment[48..96], client, blobs_url).await?;
+        let blob = get_blob(&pubdata_commitment[48..96], client, blobs_url).await?;
+        let mut blob_bytes = ethereum_4844_data_into_zksync_pubdata(&blob);
+        blobs.append(&mut blob_bytes);
         *pointer += PUBDATA_COMMITMENT_SIZE;
     }
     todo!()
