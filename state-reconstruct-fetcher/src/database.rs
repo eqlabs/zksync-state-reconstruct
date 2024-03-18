@@ -36,6 +36,7 @@ impl InnerDB {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
+        db_opts.set_max_open_files(1024);
 
         let db = DB::open_cf(
             &db_opts,
