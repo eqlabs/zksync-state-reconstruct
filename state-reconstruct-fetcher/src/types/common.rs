@@ -157,7 +157,16 @@ pub fn read_compressed_value(bytes: &[u8], pointer: &mut usize) -> Result<Packin
     // Read compressed value.
     let mut buffer = [0; 32];
     let start = buffer.len() - len;
-    buffer[start..].copy_from_slice(&bytes[*pointer..*pointer + len]);
+    let mut src_end = *pointer + len;
+    let beyond = if src_end > bytes.len() {
+        // can happen for v3 format, when we've chopped off too many zeros
+        src_end - bytes.len()
+    } else {
+        0
+    };
+    src_end -= beyond;
+    let dest_end = buffer.len() - beyond;
+    buffer[start..dest_end].copy_from_slice(&bytes[*pointer..src_end]);
     *pointer += len;
     let compressed_value = U256::from_big_endian(&buffer);
 
