@@ -127,7 +127,7 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
-    pub fn insert_storage_log(&self, storage_log_entry: &mut SnapshotStorageLog) -> Result<()> {
+    pub fn insert_storage_log(&mut self, storage_log_entry: &mut SnapshotStorageLog) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();

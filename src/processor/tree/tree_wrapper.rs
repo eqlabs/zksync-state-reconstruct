@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::Path, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, sync::Arc};
 
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256};
@@ -11,6 +11,7 @@ use state_reconstruct_fetcher::{
 use thiserror::Error;
 use tokio::sync::Mutex;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
+use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
 
@@ -34,7 +35,11 @@ impl TreeWrapper {
         snapshot: Arc<Mutex<InnerDB>>,
         reconstruct: bool,
     ) -> Result<Self> {
-        let db = RocksDBWrapper::new(db_path)?;
+        let db_opt = RocksDBOptions {
+            max_open_files: NonZeroU32::new(2048),
+            ..Default::default()
+        };
+        let db = RocksDBWrapper::from(RocksDB::with_options(db_path, db_opt)?);
         let mut tree = MerkleTree::new(db);
 
         if reconstruct {
