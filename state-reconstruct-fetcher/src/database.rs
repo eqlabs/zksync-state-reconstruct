@@ -108,7 +108,7 @@ impl InnerDB {
         }
     }
 
-    pub fn add_key(&self, key: &U256) -> Result<()> {
+    pub fn add_key(&mut self, key: &U256) -> Result<()> {
         let mut key_bytes: [u8; 32] = [0; 32];
         key.to_big_endian(&mut key_bytes);
 
