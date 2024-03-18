@@ -166,7 +166,7 @@ async fn parse_pubdata_from_blobs(
     client: &mut reqwest::Client,
     blobs_url: &str,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let l = bytes.len() - *pointer;
+    let mut l = bytes.len() - *pointer;
     let mut blobs = Vec::new();
     while *pointer < l {
         let pubdata_commitment = &bytes[*pointer..*pointer + PUBDATA_COMMITMENT_SIZE];
@@ -175,7 +175,15 @@ async fn parse_pubdata_from_blobs(
         blobs.append(&mut blob_bytes);
         *pointer += PUBDATA_COMMITMENT_SIZE;
     }
-    todo!()
+
+    l = blobs.len();
+    while l > 0 && blobs[l - 1] == 0u8 {
+        l -= 1;
+    }
+
+    let blobs_view = &blobs[..l];
+    let mut pointer = 0;
+    parse_pubdata_from_calldata(blobs_view, &mut pointer, false)
 }
 
 async fn get_blob(
