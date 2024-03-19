@@ -197,7 +197,18 @@ async fn get_blob(
             Ok(response) => match response.text().await {
                 Ok(text) => match get_blob_data(&text) {
                     Ok(data) => {
-                        return parse_blob_data(&data);
+                        let plain = if let Some(p) = data.strip_prefix("0x") {
+                            p
+                        } else {
+                            &data
+                        };
+                        match hex::decode(plain) {
+                            Ok(bytes) => return Ok(bytes),
+                            Err(e) => {
+                                tracing::warn!("Cannot parse {}: {:?}", plain, e);
+                                return Err(ParseError::BlobFormatError("not hex".to_string()));
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::error!("failed parsing response of {url}");
@@ -245,53 +256,5 @@ fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
     } else {
         tracing::warn!("Cannot parse {json_str} - not JSON.");
         Err(ParseError::BlobFormatError("not JSON".to_string()))
-    }
-}
-
-fn parse_blob_data(value_str: &str) -> Result<Vec<u8>, ParseError> {
-    if let Some(plain) = value_str.strip_prefix("0x") {
-        match hex::decode(plain) {
-            Ok(bytes) => Ok(bytes),
-            Err(e) => {
-                tracing::warn!("Cannot parse {}: {:?}", plain, e);
-                Err(ParseError::BlobFormatError("not hex".to_string()))
-            }
-        }
-    } else {
-        // assume comma-separated decimal bytes; arguably there's
-        // nothing stopping the server from using hexadecimals with a
-        // separator, but that format hadn't been seen yet
-        let mut a = Vec::new();
-        for s in value_str.split(',') {
-            match s.parse::<u8>() {
-                Ok(c) => {
-                    a.push(c);
-                }
-                Err(e) => {
-                    tracing::warn!("Cannot parse {} in {}: {:?}", s, value_str, e);
-                    return Err(ParseError::BlobFormatError("not byte".to_string()));
-                }
-            }
-        }
-        Ok(a)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_blob_data() {
-        let value_str = "87,104,179,182,167,219,86,210,29,26,191,244,13,65";
-
-        match parse_blob_data(value_str) {
-            Ok(a) => {
-                assert_eq!(a.len(), 14);
-            }
-            Err(e) => {
-                panic!("parsing failed: {:?}", e);
-            }
-        }
     }
 }
