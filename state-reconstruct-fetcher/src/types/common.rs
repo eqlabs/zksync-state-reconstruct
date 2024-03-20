@@ -1,4 +1,6 @@
 //! A collection of functions that get reused throughout format versions.
+use std::sync::{Mutex, OnceLock};
+
 use ethers::{abi, types::U256};
 
 use super::{L2ToL1Pubdata, PackingType, ParseError};
@@ -86,8 +88,46 @@ impl TryFrom<&abi::Token> for ExtractedToken {
     }
 }
 
+#[derive(Default)]
+pub struct BoojumMetrics {
+    pub total_count: u64,
+    pub total_size: u64,
+    pub min_size: u64,
+    pub max_size: u64,
+}
+
+impl BoojumMetrics {
+    pub fn add(&mut self, size: u64) {
+        self.total_count += 1;
+        self.total_size += size;
+
+        if size > 0 {
+            if self.min_size == 0 || (size < self.min_size) {
+                self.min_size = size;
+            }
+
+            if self.max_size == 0 || (self.max_size < size) {
+                self.max_size = size;
+            }
+        }
+    }
+
+    pub fn print(&self) {
+        tracing::warn!("total count = {}", self.total_count);
+        tracing::warn!("total size = {}", self.total_size);
+        tracing::warn!("min size = {}", self.min_size);
+        tracing::warn!("max size = {}", self.max_size);
+    }
+}
+
+pub fn boojum_metrics() -> &'static Mutex<BoojumMetrics> {
+    static SINGLETON: OnceLock<Mutex<BoojumMetrics>> = OnceLock::new();
+    SINGLETON.get_or_init(|| Mutex::new(Default::default()))
+}
+
 // TODO: Move these to a dedicated parser struct.
 pub fn parse_resolved_pubdata(bytes: &[u8]) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+    boojum_metrics().lock().unwrap().add(bytes.len() as u64);
     let mut l2_to_l1_pubdata = Vec::new();
 
     let mut pointer = 0;

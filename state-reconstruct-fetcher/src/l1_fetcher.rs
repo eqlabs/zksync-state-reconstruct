@@ -18,7 +18,7 @@ use crate::{
     constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
     metrics::L1Metrics,
-    types::{v1::V1, v2::V2, CommitBlock, ParseError},
+    types::{common::boojum_metrics, v1::V1, v2::V2, CommitBlock, ParseError},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
@@ -214,6 +214,8 @@ impl L1Fetcher {
         } else {
             tracing::warn!("No new blocks were processed");
         }
+
+        boojum_metrics().lock().unwrap().print();
 
         Ok(())
     }
