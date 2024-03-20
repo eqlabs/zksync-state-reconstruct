@@ -67,6 +67,8 @@ impl TryFrom<&abi::Token> for V3 {
     type Error = ParseError;
 
     /// Try to parse Ethereum ABI token.
+    ///
+    /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
             new_l2_block_number,

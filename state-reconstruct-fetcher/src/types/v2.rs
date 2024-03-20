@@ -37,7 +37,7 @@ impl CommitBlockFormat for V2 {
 impl TryFrom<&abi::Token> for V2 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
+    /// Try to parse Ethereum ABI token.
     ///
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
