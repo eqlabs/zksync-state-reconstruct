@@ -108,7 +108,7 @@ impl V3 {
         let mut pointer = 0;
         let bytes = &self.pubdata_commitments[..];
         match self.pubdata_source {
-            PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, &mut pointer, true),
+            PubdataSource::Calldata => parse_resolved_pubdata(bytes, &mut pointer, true),
             PubdataSource::Blob => parse_pubdata_from_blobs(bytes, client).await,
         }
     }
@@ -120,7 +120,7 @@ fn parse_pubdata_source(bytes: &[u8], pointer: &mut usize) -> Result<PubdataSour
     pubdata_source.try_into()
 }
 
-fn parse_pubdata_from_calldata(
+fn parse_resolved_pubdata(
     bytes: &[u8],
     pointer: &mut usize,
     shorten: bool,
@@ -182,7 +182,7 @@ async fn parse_pubdata_from_blobs(
 
     let blobs_view = &blobs[..l];
     let mut pointer = 0;
-    parse_pubdata_from_calldata(blobs_view, &mut pointer, false)
+    parse_resolved_pubdata(blobs_view, &mut pointer, false)
 }
 
 async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<u8>, ParseError> {
