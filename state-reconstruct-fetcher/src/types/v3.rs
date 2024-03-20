@@ -164,13 +164,9 @@ async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<
                         } else {
                             &data
                         };
-                        match hex::decode(plain) {
-                            Ok(bytes) => return Ok(bytes),
-                            Err(e) => {
-                                tracing::warn!("Cannot parse {}: {:?}", plain, e);
-                                return Err(ParseError::BlobFormatError("not hex".to_string()));
-                            }
-                        }
+                        return hex::decode(plain).map_err(|e| {
+                            ParseError::BlobFormatError(plain.to_string(), e.to_string())
+                        });
                     }
                     Err(e) => {
                         tracing::error!("failed parsing response of {url}");
@@ -198,25 +194,27 @@ fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
                 if let Value::String(s) = d {
                     Ok(s.clone())
                 } else {
-                    tracing::warn!("Cannot parse {json_str} - data is not string.");
                     Err(ParseError::BlobFormatError(
+                        json_str.to_string(),
                         "data is not string".to_string(),
                     ))
                 }
             } else {
-                tracing::warn!("Cannot parse {json_str} - no data in response.");
                 Err(ParseError::BlobFormatError(
+                    json_str.to_string(),
                     "no data in response".to_string(),
                 ))
             }
         } else {
-            tracing::warn!("Cannot parse {json_str} - data is not object.");
             Err(ParseError::BlobFormatError(
+                json_str.to_string(),
                 "data is not object".to_string(),
             ))
         }
     } else {
-        tracing::warn!("Cannot parse {json_str} - not JSON.");
-        Err(ParseError::BlobFormatError("not JSON".to_string()))
+        Err(ParseError::BlobFormatError(
+            json_str.to_string(),
+            "not JSON".to_string(),
+        ))
     }
 }

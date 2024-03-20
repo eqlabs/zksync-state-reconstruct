@@ -39,7 +39,7 @@ pub enum ParseError {
     BlobStorageError(String),
 
     #[error("blob format error: {0}")]
-    BlobFormatError(String),
+    BlobFormatError(String, String),
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
