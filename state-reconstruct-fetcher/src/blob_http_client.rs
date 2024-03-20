@@ -75,33 +75,33 @@ impl BlobHttpClient {
 }
 
 fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
-    if let Ok(v) = serde_json::from_str(json_str) {
-        if let Value::Object(m) = v {
-            if let Some(d) = m.get("data") {
-                if let Value::String(s) = d {
-                    Ok(s.clone())
-                } else {
-                    Err(ParseError::BlobFormatError(
-                        json_str.to_string(),
-                        "data is not string".to_string(),
-                    ))
-                }
-            } else {
-                Err(ParseError::BlobFormatError(
-                    json_str.to_string(),
-                    "no data in response".to_string(),
-                ))
-            }
-        } else {
-            Err(ParseError::BlobFormatError(
-                json_str.to_string(),
-                "data is not object".to_string(),
-            ))
-        }
-    } else {
-        Err(ParseError::BlobFormatError(
+    let Ok(v) = serde_json::from_str(json_str) else {
+        return Err(ParseError::BlobFormatError(
             json_str.to_string(),
             "not JSON".to_string(),
-        ))
-    }
+        ));
+    };
+
+    let Value::Object(m) = v else {
+        return Err(ParseError::BlobFormatError(
+            json_str.to_string(),
+            "data is not object".to_string(),
+        ));
+    };
+
+    let Some(d) = m.get("data") else {
+        return Err(ParseError::BlobFormatError(
+            json_str.to_string(),
+            "no data in response".to_string(),
+        ));
+    };
+
+    let Value::String(s) = d else {
+        return Err(ParseError::BlobFormatError(
+            json_str.to_string(),
+            "data is not string".to_string(),
+        ));
+    };
+
+    Ok(s.clone())
 }
