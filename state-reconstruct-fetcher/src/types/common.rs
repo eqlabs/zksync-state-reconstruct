@@ -2,7 +2,9 @@
 use ethers::{abi, types::U256};
 
 use super::{L2ToL1Pubdata, PackingType, ParseError};
-use crate::constants::zksync::{LENGTH_BITS_OFFSET, OPERATION_BITMASK};
+use crate::constants::zksync::{
+    L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK,
+};
 
 pub struct ExtractedToken {
     pub new_l2_block_number: U256,
@@ -85,6 +87,36 @@ impl TryFrom<&abi::Token> for ExtractedToken {
 }
 
 // TODO: Move these to a dedicated parser struct.
+pub fn parse_resolved_pubdata(bytes: &[u8]) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+    let mut l2_to_l1_pubdata = Vec::new();
+
+    let mut pointer = 0;
+    // Skip over logs and messages.
+    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+    pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
+
+    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+    for _ in 0..num_of_messages {
+        let current_message_len = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+        pointer += current_message_len as usize;
+    }
+
+    // Parse published bytecodes.
+    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+    for _ in 0..num_of_bytecodes {
+        let current_bytecode_len =
+            u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer)) as usize;
+        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
+        pointer += current_bytecode_len;
+        l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
+    }
+
+    let mut state_diffs = parse_compressed_state_diffs(bytes, &mut pointer)?;
+    l2_to_l1_pubdata.append(&mut state_diffs);
+
+    Ok(l2_to_l1_pubdata)
+}
+
 pub fn parse_compressed_state_diffs(
     bytes: &[u8],
     pointer: &mut usize,

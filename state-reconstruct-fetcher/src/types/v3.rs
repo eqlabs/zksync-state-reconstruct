@@ -8,12 +8,12 @@ use tokio::time::{sleep, Duration};
 use zkevm_circuits::eip_4844::ethereum_4844_data_into_zksync_pubdata;
 
 use super::{
-    common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
+    common::{parse_resolved_pubdata, read_next_n_bytes, ExtractedToken},
     L2ToL1Pubdata, ParseError,
 };
 use crate::{
     blob_http_client::BlobHttpClient,
-    constants::zksync::{L2_TO_L1_LOG_SERIALIZE_SIZE, PUBDATA_COMMITMENT_SIZE},
+    constants::zksync::{CALLDATA_SOURCE_TAIL_SIZE, PUBDATA_COMMITMENT_SIZE},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
@@ -109,7 +109,14 @@ impl V3 {
     ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
         let bytes = &self.pubdata_commitments[..];
         match self.pubdata_source {
-            PubdataSource::Calldata => parse_resolved_pubdata(bytes, true),
+            PubdataSource::Calldata => {
+                let l = bytes.len();
+                if l < CALLDATA_SOURCE_TAIL_SIZE {
+                    Err(ParseError::InvalidCalldata("too short".to_string()))
+                } else {
+                    parse_resolved_pubdata(&bytes[..l - CALLDATA_SOURCE_TAIL_SIZE])
+                }
+            }
             PubdataSource::Blob => parse_pubdata_from_blobs(bytes, client).await,
         }
     }
@@ -119,44 +126,6 @@ impl V3 {
 fn parse_pubdata_source(bytes: &[u8], pointer: &mut usize) -> Result<PubdataSource, ParseError> {
     let pubdata_source = u8::from_be_bytes(read_next_n_bytes(bytes, pointer));
     pubdata_source.try_into()
-}
-
-fn parse_resolved_pubdata(bytes: &[u8], shorten: bool) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut l2_to_l1_pubdata = Vec::new();
-
-    let mut pointer = 0;
-    // Skip over logs and messages.
-    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
-    pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
-
-    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
-    for _ in 0..num_of_messages {
-        let current_message_len = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
-        pointer += current_message_len as usize;
-    }
-
-    // Parse published bytecodes.
-    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
-    for _ in 0..num_of_bytecodes {
-        let current_bytecode_len =
-            u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer)) as usize;
-        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
-        pointer += current_bytecode_len;
-        l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
-    }
-
-    // Parse compressed state diffs.
-    // NOTE: Is this correct? Ignoring the last 32 bytes?
-    let diff_bytes = if shorten {
-        let end_point = bytes.len() - 32;
-        &bytes[..end_point]
-    } else {
-        bytes
-    };
-    let mut state_diffs = parse_compressed_state_diffs(diff_bytes, &mut pointer)?;
-    l2_to_l1_pubdata.append(&mut state_diffs);
-
-    Ok(l2_to_l1_pubdata)
 }
 
 async fn parse_pubdata_from_blobs(
@@ -180,7 +149,7 @@ async fn parse_pubdata_from_blobs(
     }
 
     let blobs_view = &blobs[..l];
-    parse_resolved_pubdata(blobs_view, false)
+    parse_resolved_pubdata(blobs_view)
 }
 
 async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<u8>, ParseError> {

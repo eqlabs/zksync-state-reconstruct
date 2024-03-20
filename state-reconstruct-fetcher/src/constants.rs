@@ -38,4 +38,6 @@ pub mod zksync {
     pub const LENGTH_BITS_OFFSET: u8 = 3;
     // Size of `CommitBatchInfo.pubdataCommitments` item.
     pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
+    // Size of the unparsed end of `CommitBatchInfo.pubdataCommitments`.
+    pub const CALLDATA_SOURCE_TAIL_SIZE: usize = 32;
 }

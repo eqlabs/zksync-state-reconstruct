@@ -2,10 +2,9 @@ use ethers::{abi, types::U256};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
+    common::{parse_resolved_pubdata, ExtractedToken},
     CommitBlockFormat, CommitBlockInfo, L2ToL1Pubdata, ParseError,
 };
-use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
 
 /// Data needed to commit new block
 #[derive(Debug, Serialize, Deserialize)]
@@ -53,7 +52,7 @@ impl TryFrom<&abi::Token> for V2 {
         } = token.try_into()?;
         let new_enumeration_index = new_enumeration_index.as_u64();
 
-        let total_l2_to_l1_pubdata = parse_total_l2_to_l1_pubdata(total_l2_to_l1_pubdata)?;
+        let total_l2_to_l1_pubdata = parse_resolved_pubdata(&total_l2_to_l1_pubdata[..])?;
         let blk = V2 {
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),
@@ -67,35 +66,4 @@ impl TryFrom<&abi::Token> for V2 {
 
         Ok(blk)
     }
-}
-
-fn parse_total_l2_to_l1_pubdata(bytes: Vec<u8>) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut l2_to_l1_pubdata = Vec::new();
-    let mut pointer = 0;
-
-    // Skip over logs and messages.
-    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
-
-    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    for _ in 0..num_of_messages {
-        let current_message_len = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-        pointer += current_message_len as usize;
-    }
-
-    // Parse published bytecodes.
-    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer));
-    for _ in 0..num_of_bytecodes {
-        let current_bytecode_len =
-            u32::from_be_bytes(read_next_n_bytes(&bytes, &mut pointer)) as usize;
-        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
-        pointer += current_bytecode_len;
-        l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
-    }
-
-    // Parse compressed state diffs.
-    let mut state_diffs = parse_compressed_state_diffs(&bytes, &mut pointer)?;
-    l2_to_l1_pubdata.append(&mut state_diffs);
-
-    Ok(l2_to_l1_pubdata)
 }
