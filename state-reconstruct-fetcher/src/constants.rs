@@ -36,6 +36,6 @@ pub mod zksync {
     pub const OPERATION_BITMASK: u8 = 7;
     // The number of bits shifting the compressed state diff metadata by which we retrieve its length.
     pub const LENGTH_BITS_OFFSET: u8 = 3;
-    // Size of CommitBatchInfo.pubdataCommitments item.
+    // Size of `CommitBatchInfo.pubdataCommitments` item.
     pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
 }
