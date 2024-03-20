@@ -59,7 +59,7 @@ pub struct V3 {
 impl TryFrom<&abi::Token> for V3 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token.
+    /// Try to parse Ethereum ABI token into [`V3`].
     ///
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
