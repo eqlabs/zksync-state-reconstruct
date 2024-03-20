@@ -109,7 +109,7 @@ impl V3 {
         let bytes = &self.pubdata_commitments[..];
         match self.pubdata_source {
             PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, &mut pointer, true),
-            PubdataSource::Blob => parse_pubdata_from_blobs(bytes, &mut pointer, client).await,
+            PubdataSource::Blob => parse_pubdata_from_blobs(bytes, client).await,
         }
     }
 }
@@ -162,17 +162,17 @@ fn parse_pubdata_from_calldata(
 
 async fn parse_pubdata_from_blobs(
     bytes: &[u8],
-    pointer: &mut usize,
     client: &BlobHttpClient,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut l = bytes.len() - *pointer;
+    let mut pointer = 0;
+    let mut l = bytes.len();
     let mut blobs = Vec::new();
-    while *pointer < l {
-        let pubdata_commitment = &bytes[*pointer..*pointer + PUBDATA_COMMITMENT_SIZE];
+    while pointer < l {
+        let pubdata_commitment = &bytes[pointer..pointer + PUBDATA_COMMITMENT_SIZE];
         let blob = get_blob(&pubdata_commitment[48..96], client).await?;
         let mut blob_bytes = ethereum_4844_data_into_zksync_pubdata(&blob);
         blobs.append(&mut blob_bytes);
-        *pointer += PUBDATA_COMMITMENT_SIZE;
+        pointer += PUBDATA_COMMITMENT_SIZE;
     }
 
     l = blobs.len();
