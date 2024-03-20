@@ -38,6 +38,6 @@ pub mod zksync {
     pub const LENGTH_BITS_OFFSET: u8 = 3;
     // Size of `CommitBatchInfo.pubdataCommitments` item.
     pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
-    // Size of the unparsed end of `CommitBatchInfo.pubdataCommitments`.
+    // The number of trailing bytes to ignore when using calldata post-blobs. Contains unused blob commitments.
     pub const CALLDATA_SOURCE_TAIL_SIZE: usize = 32;
 }
