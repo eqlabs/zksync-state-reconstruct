@@ -105,10 +105,9 @@ impl V3 {
         &self,
         client: &BlobHttpClient,
     ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-        let mut pointer = 0;
         let bytes = &self.pubdata_commitments[..];
         match self.pubdata_source {
-            PubdataSource::Calldata => parse_resolved_pubdata(bytes, &mut pointer, true),
+            PubdataSource::Calldata => parse_resolved_pubdata(bytes, true),
             PubdataSource::Blob => parse_pubdata_from_blobs(bytes, client).await,
         }
     }
@@ -120,29 +119,27 @@ fn parse_pubdata_source(bytes: &[u8], pointer: &mut usize) -> Result<PubdataSour
     pubdata_source.try_into()
 }
 
-fn parse_resolved_pubdata(
-    bytes: &[u8],
-    pointer: &mut usize,
-    shorten: bool,
-) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+fn parse_resolved_pubdata(bytes: &[u8], shorten: bool) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut l2_to_l1_pubdata = Vec::new();
 
+    let mut pointer = 0;
     // Skip over logs and messages.
-    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    *pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
+    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+    pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
 
-    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
     for _ in 0..num_of_messages {
-        let current_message_len = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-        *pointer += current_message_len as usize;
+        let current_message_len = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
+        pointer += current_message_len as usize;
     }
 
     // Parse published bytecodes.
-    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
+    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer));
     for _ in 0..num_of_bytecodes {
-        let current_bytecode_len = u32::from_be_bytes(read_next_n_bytes(bytes, pointer)) as usize;
-        let bytecode = bytes[*pointer..*pointer + current_bytecode_len].to_vec();
-        *pointer += current_bytecode_len;
+        let current_bytecode_len =
+            u32::from_be_bytes(read_next_n_bytes(bytes, &mut pointer)) as usize;
+        let bytecode = bytes[pointer..pointer + current_bytecode_len].to_vec();
+        pointer += current_bytecode_len;
         l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
     }
 
@@ -154,7 +151,7 @@ fn parse_resolved_pubdata(
     } else {
         bytes
     };
-    let mut state_diffs = parse_compressed_state_diffs(diff_bytes, pointer)?;
+    let mut state_diffs = parse_compressed_state_diffs(diff_bytes, &mut pointer)?;
     l2_to_l1_pubdata.append(&mut state_diffs);
 
     Ok(l2_to_l1_pubdata)
@@ -181,8 +178,7 @@ async fn parse_pubdata_from_blobs(
     }
 
     let blobs_view = &blobs[..l];
-    let mut pointer = 0;
-    parse_resolved_pubdata(blobs_view, &mut pointer, false)
+    parse_resolved_pubdata(blobs_view, false)
 }
 
 async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<u8>, ParseError> {
