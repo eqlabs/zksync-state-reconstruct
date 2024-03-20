@@ -11,7 +11,10 @@ use super::{
     common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
     L2ToL1Pubdata, ParseError,
 };
-use crate::constants::zksync::{L2_TO_L1_LOG_SERIALIZE_SIZE, PUBDATA_COMMITMENT_SIZE};
+use crate::{
+    blob_http_client::BlobHttpClient,
+    constants::zksync::{L2_TO_L1_LOG_SERIALIZE_SIZE, PUBDATA_COMMITMENT_SIZE},
+};
 
 /// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
 const MAX_RETRIES: u8 = 5;
@@ -100,16 +103,13 @@ impl TryFrom<&abi::Token> for V3 {
 impl V3 {
     pub async fn parse_pubdata(
         &self,
-        client: &reqwest::Client,
-        blobs_url: &str,
+        client: &BlobHttpClient,
     ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
         let mut pointer = 0;
         let bytes = &self.pubdata_commitments[..];
         match self.pubdata_source {
             PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, &mut pointer, true),
-            PubdataSource::Blob => {
-                parse_pubdata_from_blobs(bytes, &mut pointer, client, blobs_url).await
-            }
+            PubdataSource::Blob => parse_pubdata_from_blobs(bytes, &mut pointer, client).await,
         }
     }
 }
@@ -163,14 +163,13 @@ fn parse_pubdata_from_calldata(
 async fn parse_pubdata_from_blobs(
     bytes: &[u8],
     pointer: &mut usize,
-    client: &reqwest::Client,
-    blobs_url: &str,
+    client: &BlobHttpClient,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
     let mut l = bytes.len() - *pointer;
     let mut blobs = Vec::new();
     while *pointer < l {
         let pubdata_commitment = &bytes[*pointer..*pointer + PUBDATA_COMMITMENT_SIZE];
-        let blob = get_blob(&pubdata_commitment[48..96], client, blobs_url).await?;
+        let blob = get_blob(&pubdata_commitment[48..96], client).await?;
         let mut blob_bytes = ethereum_4844_data_into_zksync_pubdata(&blob);
         blobs.append(&mut blob_bytes);
         *pointer += PUBDATA_COMMITMENT_SIZE;
@@ -186,14 +185,10 @@ async fn parse_pubdata_from_blobs(
     parse_pubdata_from_calldata(blobs_view, &mut pointer, false)
 }
 
-async fn get_blob(
-    kzg_commitment: &[u8],
-    client: &reqwest::Client,
-    blobs_url: &str,
-) -> Result<Vec<u8>, ParseError> {
-    let url = format!("{}0x{}", blobs_url, hex::encode(kzg_commitment));
+async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<u8>, ParseError> {
+    let url = client.format_url(kzg_commitment);
     for attempt in 1..=MAX_RETRIES {
-        match client.get(url.clone()).send().await {
+        match client.retrieve_url(&url).await {
             Ok(response) => match response.text().await {
                 Ok(text) => match get_blob_data(&text) {
                     Ok(data) => {

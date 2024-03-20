@@ -5,6 +5,7 @@ use serde_json_any_key::any_key_map;
 use thiserror::Error;
 
 use self::{v1::V1, v2::V2, v3::V3};
+use crate::blob_http_client::BlobHttpClient;
 
 // NOTE: We should probably make these more human-readable.
 pub mod common;
@@ -104,11 +105,10 @@ impl CommitBlock {
 
     pub async fn try_from_token_resolve<'a>(
         value: &'a abi::Token,
-        client: &reqwest::Client,
-        blobs_url: &str,
+        client: &BlobHttpClient,
     ) -> Result<Self, ParseError> {
         let commit_block_info = V3::try_from(value)?;
-        Self::from_commit_block_resolve(commit_block_info, client, blobs_url).await
+        Self::from_commit_block_resolve(commit_block_info, client).await
     }
 
     pub fn from_commit_block(block_type: CommitBlockInfo) -> Self {
@@ -170,10 +170,9 @@ impl CommitBlock {
 
     pub async fn from_commit_block_resolve(
         block: V3,
-        client: &reqwest::Client,
-        blobs_url: &str,
+        client: &BlobHttpClient,
     ) -> Result<Self, ParseError> {
-        let total_l2_to_l1_pubdata = block.parse_pubdata(client, blobs_url).await?;
+        let total_l2_to_l1_pubdata = block.parse_pubdata(client).await?;
         let mut initial_storage_changes = IndexMap::new();
         let mut repeated_storage_changes = IndexMap::new();
         let mut factory_deps = Vec::new();

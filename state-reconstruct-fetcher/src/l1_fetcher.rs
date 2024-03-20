@@ -14,6 +14,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    blob_http_client::BlobHttpClient,
     constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
     metrics::L1Metrics,
@@ -449,8 +450,7 @@ impl L1Fetcher {
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
-        let client = make_client()?;
-        let blobs_url = self.config.blobs_url.clone();
+        let client = BlobHttpClient::new(self.config.blobs_url.clone())?;
         Ok(tokio::spawn({
             async move {
                 let mut boojum_mode = false;
@@ -479,15 +479,7 @@ impl L1Fetcher {
                     }
 
                     let blocks = loop {
-                        match parse_calldata(
-                            block_number,
-                            &function,
-                            &tx.input,
-                            &client,
-                            &blobs_url,
-                        )
-                        .await
-                        {
+                        match parse_calldata(block_number, &function, &tx.input, &client).await {
                             Ok(blks) => break blks,
                             Err(e) => match e {
                                 ParseError::BlobStorageError(_) => {
@@ -549,24 +541,11 @@ impl L1Fetcher {
     }
 }
 
-fn make_client() -> Result<reqwest::Client> {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "Accept",
-        reqwest::header::HeaderValue::from_static("application/json"),
-    );
-    let client = reqwest::Client::builder()
-        .default_headers(headers)
-        .build()?;
-    Ok(client)
-}
-
 pub async fn parse_calldata(
     l1_block_number: u64,
     commit_blocks_fn: &Function,
     calldata: &[u8],
-    client: &reqwest::Client,
-    blobs_url: &str,
+    client: &BlobHttpClient,
 ) -> Result<Vec<CommitBlock>, ParseError> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
@@ -606,7 +585,7 @@ pub async fn parse_calldata(
 
     // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
     let mut block_infos =
-        parse_commit_block_info(&new_blocks_data, l1_block_number, client, blobs_url).await?;
+        parse_commit_block_info(&new_blocks_data, l1_block_number, client).await?;
     // Supplement every `CommitBlock` element with L1 block number information.
     block_infos
         .iter_mut()
@@ -617,8 +596,7 @@ pub async fn parse_calldata(
 async fn parse_commit_block_info(
     data: &abi::Token,
     l1_block_number: u64,
-    client: &reqwest::Client,
-    blobs_url: &str,
+    client: &BlobHttpClient,
 ) -> Result<Vec<CommitBlock>, ParseError> {
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
@@ -630,7 +608,7 @@ async fn parse_commit_block_info(
     for d in data {
         let commit_block = {
             if l1_block_number >= BLOB_BLOCK {
-                CommitBlock::try_from_token_resolve(d, client, blobs_url).await?
+                CommitBlock::try_from_token_resolve(d, client).await?
             } else if l1_block_number >= BOOJUM_BLOCK {
                 CommitBlock::try_from_token::<V2>(d)?
             } else {
