@@ -27,6 +27,7 @@ pub struct L1FetcherOptions {
     pub disable_polling: bool,
 }
 
+/// Allow conversion into `l1_fetcher::L1FetcherOptions`, for use at lower level.
 impl From<L1FetcherOptions> for FetcherOptions {
     fn from(opt: L1FetcherOptions) -> Self {
         FetcherOptions {
