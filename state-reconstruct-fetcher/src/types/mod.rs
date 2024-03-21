@@ -2,45 +2,15 @@ use ethers::{abi, types::U256};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json_any_key::any_key_map;
-use thiserror::Error;
 
 use self::{v1::V1, v2::V2, v3::V3};
-use crate::blob_http_client::BlobHttpClient;
+use crate::{blob_http_client::BlobHttpClient, ParseError};
 
 // NOTE: We should probably make these more human-readable.
 pub mod common;
 pub mod v1;
 pub mod v2;
 pub mod v3;
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("invalid Calldata: {0}")]
-    InvalidCalldata(String),
-
-    #[error("invalid StoredBlockInfo: {0}")]
-    InvalidStoredBlockInfo(String),
-
-    #[error("invalid CommitBlockInfo: {0}")]
-    InvalidCommitBlockInfo(String),
-
-    #[allow(dead_code)]
-    #[error("invalid compressed bytecode: {0}")]
-    InvalidCompressedByteCode(String),
-
-    #[error("invalid compressed value: {0}")]
-    InvalidCompressedValue(String),
-
-    #[error("invalid pubdata source: {0}")]
-    InvalidPubdataSource(String),
-
-    #[error("blob storage error: {0}")]
-    BlobStorageError(String),
-
-    #[error("blob format error: {0}")]
-    BlobFormatError(String, String),
-}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PackingType {

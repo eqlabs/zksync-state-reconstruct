@@ -1,9 +1,10 @@
 //! A collection of functions that get reused throughout format versions.
 use ethers::{abi, types::U256};
 
-use super::{L2ToL1Pubdata, PackingType, ParseError};
-use crate::constants::zksync::{
-    L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK,
+use super::{L2ToL1Pubdata, PackingType};
+use crate::{
+    constants::zksync::{L2_TO_L1_LOG_SERIALIZE_SIZE, LENGTH_BITS_OFFSET, OPERATION_BITMASK},
+    ParseError,
 };
 
 pub struct ExtractedToken {
