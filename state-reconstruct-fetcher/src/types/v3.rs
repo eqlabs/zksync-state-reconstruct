@@ -3,12 +3,16 @@ use ethers::{
     types::U256,
 };
 use serde::{Deserialize, Serialize};
+use zkevm_circuits::eip_4844::ethereum_4844_data_into_zksync_pubdata;
 
 use super::{
-    common::{parse_compressed_state_diffs, read_next_n_bytes, ExtractedToken},
-    CommitBlockFormat, CommitBlockInfo, L2ToL1Pubdata, ParseError,
+    common::{parse_resolved_pubdata, read_next_n_bytes, ExtractedToken},
+    L2ToL1Pubdata, ParseError,
 };
-use crate::constants::zksync::L2_TO_L1_LOG_SERIALIZE_SIZE;
+use crate::{
+    blob_http_client::BlobHttpClient,
+    constants::zksync::{CALLDATA_SOURCE_TAIL_SIZE, PUBDATA_COMMITMENT_SIZE},
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PubdataSource {
@@ -48,20 +52,14 @@ pub struct V3 {
     pub priority_operations_hash: Vec<u8>,
     /// Concatenation of all L2 -> L1 system logs in the block.
     pub system_logs: Vec<u8>,
-    /// Total pubdata committed to as part of bootloader run. Contents are: l2Tol1Logs <> l2Tol1Messages <> publishedBytecodes <> stateDiffs.
-    pub total_l2_to_l1_pubdata: Vec<L2ToL1Pubdata>,
-}
-
-impl CommitBlockFormat for V3 {
-    fn to_enum_variant(self) -> CommitBlockInfo {
-        CommitBlockInfo::V3(self)
-    }
+    /// Unparsed blob commitments; must be either parsed, or parsed and resolved using some blob storage server (depending on `pubdata_source`).
+    pub pubdata_commitments: Vec<u8>,
 }
 
 impl TryFrom<&abi::Token> for V3 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
+    /// Try to parse Ethereum ABI token into [`V3`].
     ///
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
@@ -79,8 +77,8 @@ impl TryFrom<&abi::Token> for V3 {
 
         let mut pointer = 0;
         let pubdata_source = parse_pubdata_source(&total_l2_to_l1_pubdata, &mut pointer)?;
-        let total_l2_to_l1_pubdata =
-            parse_total_l2_to_l1_pubdata(&total_l2_to_l1_pubdata, &mut pointer, pubdata_source)?;
+        let pubdata_commitments =
+            total_l2_to_l1_pubdata[pointer..total_l2_to_l1_pubdata.len()].to_vec();
         let blk = V3 {
             pubdata_source,
             block_number: new_l2_block_number.as_u64(),
@@ -90,10 +88,30 @@ impl TryFrom<&abi::Token> for V3 {
             number_of_l1_txs,
             priority_operations_hash,
             system_logs,
-            total_l2_to_l1_pubdata,
+            pubdata_commitments,
         };
 
         Ok(blk)
+    }
+}
+
+impl V3 {
+    pub async fn parse_pubdata(
+        &self,
+        client: &BlobHttpClient,
+    ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
+        let bytes = &self.pubdata_commitments[..];
+        match self.pubdata_source {
+            PubdataSource::Calldata => {
+                let l = bytes.len();
+                if l < CALLDATA_SOURCE_TAIL_SIZE {
+                    Err(ParseError::InvalidCalldata("too short".to_string()))
+                } else {
+                    parse_resolved_pubdata(&bytes[..l - CALLDATA_SOURCE_TAIL_SIZE])
+                }
+            }
+            PubdataSource::Blob => parse_pubdata_from_blobs(bytes, client).await,
+        }
     }
 }
 
@@ -103,47 +121,26 @@ fn parse_pubdata_source(bytes: &[u8], pointer: &mut usize) -> Result<PubdataSour
     pubdata_source.try_into()
 }
 
-fn parse_total_l2_to_l1_pubdata(
+async fn parse_pubdata_from_blobs(
     bytes: &[u8],
-    pointer: &mut usize,
-    pubdata_source: PubdataSource,
+    client: &BlobHttpClient,
 ) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    match pubdata_source {
-        PubdataSource::Calldata => parse_pubdata_from_calldata(bytes, pointer),
-        PubdataSource::Blob => todo!(),
-    }
-}
-
-fn parse_pubdata_from_calldata(
-    bytes: &[u8],
-    pointer: &mut usize,
-) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut l2_to_l1_pubdata = Vec::new();
-
-    // Skip over logs and messages.
-    let num_of_l1_to_l2_logs = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    *pointer += L2_TO_L1_LOG_SERIALIZE_SIZE * num_of_l1_to_l2_logs as usize;
-
-    let num_of_messages = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    for _ in 0..num_of_messages {
-        let current_message_len = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-        *pointer += current_message_len as usize;
+    let mut pointer = 0;
+    let mut l = bytes.len();
+    let mut blobs = Vec::new();
+    while pointer < l {
+        let pubdata_commitment = &bytes[pointer..pointer + PUBDATA_COMMITMENT_SIZE];
+        let blob = client.get_blob(&pubdata_commitment[48..96]).await?;
+        let mut blob_bytes = ethereum_4844_data_into_zksync_pubdata(&blob);
+        blobs.append(&mut blob_bytes);
+        pointer += PUBDATA_COMMITMENT_SIZE;
     }
 
-    // Parse published bytecodes.
-    let num_of_bytecodes = u32::from_be_bytes(read_next_n_bytes(bytes, pointer));
-    for _ in 0..num_of_bytecodes {
-        let current_bytecode_len = u32::from_be_bytes(read_next_n_bytes(bytes, pointer)) as usize;
-        let bytecode = bytes[*pointer..*pointer + current_bytecode_len].to_vec();
-        *pointer += current_bytecode_len;
-        l2_to_l1_pubdata.push(L2ToL1Pubdata::PublishedBytecode(bytecode))
+    l = blobs.len();
+    while l > 0 && blobs[l - 1] == 0u8 {
+        l -= 1;
     }
 
-    // Parse compressed state diffs.
-    // NOTE: Is this correct? Ignoring the last 32 bytes?
-    let end_point = bytes.len() - 32;
-    let mut state_diffs = parse_compressed_state_diffs(&bytes[..end_point], pointer)?;
-    l2_to_l1_pubdata.append(&mut state_diffs);
-
-    Ok(l2_to_l1_pubdata)
+    let blobs_view = &blobs[..l];
+    parse_resolved_pubdata(blobs_view)
 }

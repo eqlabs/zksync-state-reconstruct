@@ -1,5 +1,7 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use state_reconstruct_fetcher::constants::ethereum;
+use state_reconstruct_fetcher::{
+    constants::ethereum, l1_fetcher::L1FetcherOptions as FetcherOptions,
+};
 
 use crate::processor::snapshot;
 
@@ -8,6 +10,9 @@ pub struct L1FetcherOptions {
     /// The Ethereum JSON-RPC HTTP URL to use.
     #[arg(long)]
     pub http_url: String,
+    /// The Ethereum blob storage URL base.
+    #[arg(long, default_value_t = ethereum::BLOBS_URL.to_string())]
+    pub blobs_url: String,
     /// Ethereum block number to start state import from.
     #[arg(short, long, default_value_t = ethereum::GENESIS_BLOCK)]
     pub start_block: u64,
@@ -20,6 +25,20 @@ pub struct L1FetcherOptions {
     /// If present, don't poll for new blocks after reaching the end.
     #[arg(long)]
     pub disable_polling: bool,
+}
+
+/// Allow conversion into `l1_fetcher::L1FetcherOptions`, for use at lower level.
+impl From<L1FetcherOptions> for FetcherOptions {
+    fn from(opt: L1FetcherOptions) -> Self {
+        FetcherOptions {
+            http_url: opt.http_url,
+            blobs_url: opt.blobs_url,
+            start_block: opt.start_block,
+            block_step: opt.block_step,
+            block_count: opt.block_count,
+            disable_polling: opt.disable_polling,
+        }
+    }
 }
 
 #[derive(Subcommand)]

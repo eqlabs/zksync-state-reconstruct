@@ -14,10 +14,11 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    blob_http_client::BlobHttpClient,
     constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
     metrics::L1Metrics,
-    types::{v1::V1, v2::V2, v3::V3, CommitBlock, ParseError},
+    types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
@@ -45,6 +46,8 @@ pub enum L1FetchError {
 pub struct L1FetcherOptions {
     /// The Ethereum JSON-RPC HTTP URL to use.
     pub http_url: String,
+    /// The Ethereum blob storage URL base.
+    pub blobs_url: String,
     /// Ethereum block number to start state import from.
     pub start_block: u64,
     /// The number of blocks to filter & process in one step over.
@@ -447,6 +450,7 @@ impl L1Fetcher {
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
+        let client = BlobHttpClient::new(self.config.blobs_url.clone())?;
         Ok(tokio::spawn({
             async move {
                 let mut boojum_mode = false;
@@ -474,12 +478,28 @@ impl L1Fetcher {
                             contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
                     }
 
-                    let blocks = match parse_calldata(block_number, &function, &tx.input).await {
-                        Ok(blks) => blks,
-                        Err(e) => {
-                            tracing::error!("Failed to parse calldata: {e}");
-                            cancellation_token.cancel();
-                            return last_block_number_processed;
+                    let blocks = loop {
+                        match parse_calldata(block_number, &function, &tx.input, &client).await {
+                            Ok(blks) => break blks,
+                            Err(e) => match e {
+                                ParseError::BlobStorageError(_) => {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down parsing...");
+                                        return last_block_number_processed;
+                                    }
+                                    sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                                }
+                                ParseError::BlobFormatError(data, inner) => {
+                                    tracing::error!("Cannot parse {}: {}", data, inner);
+                                    cancellation_token.cancel();
+                                    return last_block_number_processed;
+                                }
+                                _ => {
+                                    tracing::error!("Failed to parse calldata: {e}");
+                                    cancellation_token.cancel();
+                                    return last_block_number_processed;
+                                }
+                            },
                         }
                     };
 
@@ -530,7 +550,8 @@ pub async fn parse_calldata(
     l1_block_number: u64,
     commit_blocks_fn: &Function,
     calldata: &[u8],
-) -> Result<Vec<CommitBlock>> {
+    client: &BlobHttpClient,
+) -> Result<Vec<CommitBlock>, ParseError> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
         .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
@@ -539,8 +560,7 @@ pub async fn parse_calldata(
         return Err(ParseError::InvalidCalldata(format!(
             "invalid number of parameters (got {}, expected 2) for commitBlocks function",
             parsed_input.len()
-        ))
-        .into());
+        )));
     }
 
     let new_blocks_data = parsed_input
@@ -551,25 +571,26 @@ pub async fn parse_calldata(
         .ok_or_else(|| ParseError::InvalidCalldata("stored block info".to_string()))?;
 
     let abi::Token::Tuple(stored_block_info) = stored_block_info else {
-        return Err(ParseError::InvalidCalldata("invalid StoredBlockInfo".to_string()).into());
+        return Err(ParseError::InvalidCalldata(
+            "invalid StoredBlockInfo".to_string(),
+        ));
     };
 
     let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
             "cannot parse previous L2 block number".to_string(),
-        )
-        .into());
+        ));
     };
 
     let abi::Token::Uint(_previous_enumeration_index) = stored_block_info[2].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
             "cannot parse previous enumeration index".to_string(),
-        )
-        .into());
+        ));
     };
 
     // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
-    let mut block_infos = parse_commit_block_info(&new_blocks_data, l1_block_number).await?;
+    let mut block_infos =
+        parse_commit_block_info(&new_blocks_data, l1_block_number, client).await?;
     // Supplement every `CommitBlock` element with L1 block number information.
     block_infos
         .iter_mut()
@@ -580,19 +601,19 @@ pub async fn parse_calldata(
 async fn parse_commit_block_info(
     data: &abi::Token,
     l1_block_number: u64,
-) -> Result<Vec<CommitBlock>> {
+    client: &BlobHttpClient,
+) -> Result<Vec<CommitBlock>, ParseError> {
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
             "cannot convert newBlocksData to array".to_string(),
-        )
-        .into());
+        ));
     };
 
     let mut result = vec![];
     for d in data {
         let commit_block = {
             if l1_block_number >= BLOB_BLOCK {
-                CommitBlock::try_from_token::<V3>(d)?
+                CommitBlock::try_from_token_resolve(d, client).await?
             } else if l1_block_number >= BOOJUM_BLOCK {
                 CommitBlock::try_from_token::<V2>(d)?
             } else {

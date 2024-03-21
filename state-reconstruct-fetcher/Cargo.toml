@@ -10,6 +10,7 @@ ethers = "1.0.2"
 eyre = "0.6.8"
 indexmap = { version = "2.0.2", features = ["serde"] }
 rand = "0.8.5"
+reqwest = "0.11.24"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
 serde_json_any_key = "2.0.0"
@@ -20,3 +21,4 @@ tracing = "0.1.40"
 rocksdb = "0.21.0"
 hex = "0.4.3"
 chrono = "0.4.31"
+zkevm_circuits = { git = "https://github.com/matter-labs/era-zkevm_circuits", branch = "v1.4.1" }
