@@ -62,7 +62,13 @@ impl Parser {
     ) -> Result<Self> {
         let blob_client = BlobHttpClient::new(blob_url)?;
         let current_format = BatchFormat::from_l1_block_number(current_l1_block_number);
-        let decode_function = contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
+        let decode_function = {
+            if current_l1_block_number >= BOOJUM_BLOCK {
+                contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone()
+            } else {
+                contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone()
+            }
+        };
 
         Ok(Self {
             metrics,
@@ -192,7 +198,6 @@ impl Parser {
                 if current_l1_block_number >= BOOJUM_BLOCK {
                     tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
                     self.current_format = BatchFormat::PostBoojum;
-
                     self.decode_function = self
                         .contracts
                         .v2
