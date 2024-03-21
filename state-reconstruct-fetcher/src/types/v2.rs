@@ -36,9 +36,7 @@ impl CommitBlockFormat for V2 {
 impl TryFrom<&abi::Token> for V2 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token.
-    ///
-    /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
+    /// Try to parse Ethereum ABI token into [`V2`].
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
             new_l2_block_number,
@@ -52,7 +50,7 @@ impl TryFrom<&abi::Token> for V2 {
         } = token.try_into()?;
         let new_enumeration_index = new_enumeration_index.as_u64();
 
-        let total_l2_to_l1_pubdata = parse_resolved_pubdata(&total_l2_to_l1_pubdata[..])?;
+        let total_l2_to_l1_pubdata = parse_resolved_pubdata(&total_l2_to_l1_pubdata)?;
         let blk = V2 {
             block_number: new_l2_block_number.as_u64(),
             timestamp: timestamp.as_u64(),

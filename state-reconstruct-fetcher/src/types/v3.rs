@@ -3,8 +3,6 @@ use ethers::{
     types::U256,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use tokio::time::{sleep, Duration};
 use zkevm_circuits::eip_4844::ethereum_4844_data_into_zksync_pubdata;
 
 use super::{
@@ -15,11 +13,6 @@ use crate::{
     blob_http_client::BlobHttpClient,
     constants::zksync::{CALLDATA_SOURCE_TAIL_SIZE, PUBDATA_COMMITMENT_SIZE},
 };
-
-/// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
-const MAX_RETRIES: u8 = 5;
-/// The interval in seconds to wait before retrying to fetch a blob.
-const FAILED_FETCH_RETRY_INTERVAL_S: u64 = 10;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum PubdataSource {
@@ -66,9 +59,7 @@ pub struct V3 {
 impl TryFrom<&abi::Token> for V3 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token.
-    ///
-    /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
+    /// Try to parse Ethereum ABI token into [`V3`].
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
             new_l2_block_number,
@@ -137,7 +128,7 @@ async fn parse_pubdata_from_blobs(
     let mut blobs = Vec::new();
     while pointer < l {
         let pubdata_commitment = &bytes[pointer..pointer + PUBDATA_COMMITMENT_SIZE];
-        let blob = get_blob(&pubdata_commitment[48..96], client).await?;
+        let blob = client.get_blob(&pubdata_commitment[48..96]).await?;
         let mut blob_bytes = ethereum_4844_data_into_zksync_pubdata(&blob);
         blobs.append(&mut blob_bytes);
         pointer += PUBDATA_COMMITMENT_SIZE;
@@ -150,71 +141,4 @@ async fn parse_pubdata_from_blobs(
 
     let blobs_view = &blobs[..l];
     parse_resolved_pubdata(blobs_view)
-}
-
-async fn get_blob(kzg_commitment: &[u8], client: &BlobHttpClient) -> Result<Vec<u8>, ParseError> {
-    let url = client.format_url(kzg_commitment);
-    for attempt in 1..=MAX_RETRIES {
-        match client.retrieve_url(&url).await {
-            Ok(response) => match response.text().await {
-                Ok(text) => match get_blob_data(&text) {
-                    Ok(data) => {
-                        let plain = if let Some(p) = data.strip_prefix("0x") {
-                            p
-                        } else {
-                            &data
-                        };
-                        return hex::decode(plain).map_err(|e| {
-                            ParseError::BlobFormatError(plain.to_string(), e.to_string())
-                        });
-                    }
-                    Err(e) => {
-                        tracing::error!("failed parsing response of {url}");
-                        return Err(e);
-                    }
-                },
-                Err(e) => {
-                    tracing::error!("attempt {}: {} failed: {:?}", attempt, url, e);
-                    sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
-                }
-            },
-            Err(e) => {
-                tracing::error!("attempt {}: GET {} failed: {:?}", attempt, url, e);
-                sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
-            }
-        }
-    }
-    Err(ParseError::BlobStorageError(url))
-}
-
-fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
-    if let Ok(v) = serde_json::from_str(json_str) {
-        if let Value::Object(m) = v {
-            if let Some(d) = m.get("data") {
-                if let Value::String(s) = d {
-                    Ok(s.clone())
-                } else {
-                    Err(ParseError::BlobFormatError(
-                        json_str.to_string(),
-                        "data is not string".to_string(),
-                    ))
-                }
-            } else {
-                Err(ParseError::BlobFormatError(
-                    json_str.to_string(),
-                    "no data in response".to_string(),
-                ))
-            }
-        } else {
-            Err(ParseError::BlobFormatError(
-                json_str.to_string(),
-                "data is not object".to_string(),
-            ))
-        }
-    } else {
-        Err(ParseError::BlobFormatError(
-            json_str.to_string(),
-            "not JSON".to_string(),
-        ))
-    }
 }
