@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde::Deserialize;
 use tokio::time::{sleep, Duration};
 
 use crate::types::ParseError;
@@ -7,6 +7,11 @@ use crate::types::ParseError;
 const MAX_RETRIES: u8 = 5;
 /// The interval in seconds to wait before retrying to fetch a blob.
 const FAILED_FETCH_RETRY_INTERVAL_S: u64 = 10;
+
+#[derive(Deserialize)]
+struct JsonResponse {
+    data: String,
+}
 
 pub struct BlobHttpClient {
     client: reqwest::Client,
@@ -75,33 +80,11 @@ impl BlobHttpClient {
 }
 
 fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
-    let Ok(v) = serde_json::from_str(json_str) else {
-        return Err(ParseError::BlobFormatError(
+    match serde_json::from_str::<JsonResponse>(json_str) {
+        Ok(data) => Ok(data.data),
+        Err(e) => Err(ParseError::BlobFormatError(
             json_str.to_string(),
-            "not JSON".to_string(),
-        ));
-    };
-
-    let Value::Object(m) = v else {
-        return Err(ParseError::BlobFormatError(
-            json_str.to_string(),
-            "data is not object".to_string(),
-        ));
-    };
-
-    let Some(d) = m.get("data") else {
-        return Err(ParseError::BlobFormatError(
-            json_str.to_string(),
-            "no data in response".to_string(),
-        ));
-    };
-
-    let Value::String(s) = d else {
-        return Err(ParseError::BlobFormatError(
-            json_str.to_string(),
-            "data is not string".to_string(),
-        ));
-    };
-
-    Ok(s.clone())
+            e.to_string(),
+        )),
+    }
 }
