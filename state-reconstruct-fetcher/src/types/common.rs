@@ -1,6 +1,7 @@
 //! A collection of functions that get reused throughout format versions.
-use std::sync::{Mutex, OnceLock};
+use std::{io::Write, sync::{Mutex, OnceLock}};
 
+use brotlic::CompressorWriter;
 use ethers::{abi, types::U256};
 
 use super::{L2ToL1Pubdata, PackingType, ParseError};
@@ -94,10 +95,13 @@ pub struct BoojumMetrics {
     pub total_size: u64,
     pub min_size: u64,
     pub max_size: u64,
+    pub total_compressed: u64,
+    pub min_compressed: u64,
+    pub max_compressed: u64,
 }
 
 impl BoojumMetrics {
-    pub fn add(&mut self, size: u64) {
+    pub fn add(&mut self, size: u64, compressed: u64) {
         self.total_count += 1;
         self.total_size += size;
 
@@ -110,13 +114,28 @@ impl BoojumMetrics {
                 self.max_size = size;
             }
         }
+
+        if compressed > 0 {
+            self.total_compressed += compressed;
+
+            if self.min_compressed == 0 || (compressed < self.min_compressed) {
+                self.min_compressed = compressed;
+            }
+
+            if self.max_compressed == 0 || (self.max_compressed < compressed) {
+                self.max_compressed = compressed;
+            }
+        }
     }
 
     pub fn print(&self) {
-        tracing::warn!("total count = {}", self.total_count);
-        tracing::warn!("total size = {}", self.total_size);
-        tracing::warn!("min size = {}", self.min_size);
-        tracing::warn!("max size = {}", self.max_size);
+        tracing::info!("total count = {}", self.total_count);
+        tracing::info!("total size = {}", self.total_size);
+        tracing::info!("min size = {}", self.min_size);
+        tracing::info!("max size = {}", self.max_size);
+        tracing::info!("total compressed = {}", self.total_compressed);
+        tracing::info!("min compressed = {}", self.min_compressed);
+        tracing::info!("max compressed = {}", self.max_compressed);
     }
 }
 
@@ -127,7 +146,17 @@ pub fn boojum_metrics() -> &'static Mutex<BoojumMetrics> {
 
 // TODO: Move these to a dedicated parser struct.
 pub fn parse_resolved_pubdata(bytes: &[u8]) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    boojum_metrics().lock().unwrap().add(bytes.len() as u64);
+    let mut compressor = CompressorWriter::new(Vec::new());
+    let compressed = if let Ok(_) = compressor.write_all(bytes) {
+        if let Ok(cd) = compressor.into_inner() {
+            cd.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+    boojum_metrics().lock().unwrap().add(bytes.len() as u64, compressed as u64);
     let mut l2_to_l1_pubdata = Vec::new();
 
     let mut pointer = 0;
