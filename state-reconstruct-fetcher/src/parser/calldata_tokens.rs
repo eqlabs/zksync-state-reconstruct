@@ -1,5 +1,7 @@
-use ethers::abi::{self, Token};
-use zkevm_circuits::ethereum_types::U256;
+use ethers::{
+    abi::{self, Token},
+    types::U256,
+};
 
 use crate::types::ParseError;
 

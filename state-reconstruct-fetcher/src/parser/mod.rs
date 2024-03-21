@@ -5,10 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use ethers::{
-    abi::{self, Function},
-    types::Transaction,
-};
+use ethers::{abi::Function, types::Transaction};
 use eyre::Result;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -26,6 +23,7 @@ use crate::{
 };
 
 // TODO: Should use the real types format instead.
+#[derive(Copy, Clone, PartialEq, Eq)]
 enum BatchFormat {
     PreBoojum,
     PostBoojum,
@@ -46,7 +44,10 @@ impl BatchFormat {
 
 pub struct Parser {
     metrics: Arc<Mutex<L1Metrics>>,
+    /// TODO: this is quite awkward.
     contracts: Contracts,
+    decode_function: Function,
+    //
     blob_client: BlobHttpClient,
     current_format: BatchFormat,
 }
@@ -60,9 +61,12 @@ impl Parser {
     ) -> Result<Self> {
         let blob_client = BlobHttpClient::new(blob_url)?;
         let current_format = BatchFormat::from_l1_block_number(current_l1_block_number);
+        let decode_function = contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
+
         Ok(Self {
             metrics,
             contracts,
+            decode_function,
             blob_client,
             current_format,
         })
@@ -75,13 +79,9 @@ impl Parser {
         cancellation_token: CancellationToken,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
-        let contracts = self.contracts.clone();
 
         Ok(tokio::spawn({
             async move {
-                let mut boojum_mode = false;
-                let mut function =
-                    contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
@@ -99,18 +99,8 @@ impl Parser {
                     self.current_format =
                         BatchFormat::from_l1_block_number(current_l1_block_number);
 
-                    if !boojum_mode && current_l1_block_number >= BOOJUM_BLOCK {
-                        tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
-                        boojum_mode = true;
-                        function =
-                            contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
-                    }
-
                     let blocks = loop {
-                        match self
-                            .parse_calldata(&function, &tx.input, current_l1_block_number)
-                            .await
-                        {
+                        match self.parse_blocks(&tx.input, current_l1_block_number).await {
                             Ok(blks) => break blks,
                             Err(e) => match e {
                                 ParseError::BlobStorageError(_) => {
@@ -160,34 +150,21 @@ impl Parser {
         }))
     }
 
-    pub async fn parse_calldata(
-        &self,
-        commit_blocks_fn: &Function,
+    pub async fn parse_blocks(
+        &mut self,
         calldata: &[u8],
         current_l1_block_number: u64,
     ) -> Result<Vec<CommitBlock>, ParseError> {
-        let parsed_input = commit_blocks_fn
+        self.adjust_state_if_needed(current_l1_block_number);
+
+        let parsed_input = self
+            .decode_function
             .decode_input(&calldata[4..])
             .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
         let calldata = CalldataToken::try_from(parsed_input)?;
 
-        // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
-        let mut block_infos = self
-            .parse_commit_block_info(&calldata.new_blocks_data.data)
-            .await?;
-        // Supplement every `CommitBlock` element with L1 block number information.
-        block_infos
-            .iter_mut()
-            .for_each(|e| e.l1_block_number = Some(current_l1_block_number));
-        Ok(block_infos)
-    }
-
-    async fn parse_commit_block_info(
-        &self,
-        data: &Vec<abi::Token>,
-    ) -> Result<Vec<CommitBlock>, ParseError> {
-        let mut result = vec![];
-        for d in data {
+        let mut block_infos = vec![];
+        for d in &calldata.new_blocks_data.data {
             let commit_block = {
                 match self.current_format {
                     BatchFormat::PreBoojum => CommitBlock::try_from_token::<V1>(d)?,
@@ -198,9 +175,38 @@ impl Parser {
                 }
             };
 
-            result.push(commit_block);
+            block_infos.push(commit_block);
         }
 
-        Ok(result)
+        // Supplement every `CommitBlock` element with L1 block number information.
+        block_infos
+            .iter_mut()
+            .for_each(|e| e.l1_block_number = Some(current_l1_block_number));
+        Ok(block_infos)
+    }
+
+    fn adjust_state_if_needed(&mut self, current_l1_block_number: u64) {
+        match self.current_format {
+            BatchFormat::PreBoojum => {
+                if current_l1_block_number >= BOOJUM_BLOCK {
+                    tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
+                    self.current_format = BatchFormat::PostBoojum;
+
+                    self.decode_function = self
+                        .contracts
+                        .v2
+                        .functions_by_name("commitBatches")
+                        .unwrap()[0]
+                        .clone();
+                }
+            }
+            BatchFormat::PostBoojum => {
+                if current_l1_block_number >= BLOB_BLOCK {
+                    tracing::debug!("Reached `BLOB_BLOCK`");
+                    self.current_format = BatchFormat::Blob;
+                }
+            }
+            BatchFormat::Blob => (),
+        }
     }
 }
