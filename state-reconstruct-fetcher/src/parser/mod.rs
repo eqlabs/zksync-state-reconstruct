@@ -19,7 +19,8 @@ use crate::{
     constants::ethereum::{BLOB_BLOCK, BOOJUM_BLOCK},
     l1_fetcher::{Contracts, LONG_POLLING_INTERVAL_S},
     metrics::L1Metrics,
-    types::{v1::V1, v2::V2, CommitBlock, ParseError},
+    types::{v1::V1, v2::V2, CommitBlock},
+    ParseError,
 };
 
 // TODO: Should use the real types format instead.

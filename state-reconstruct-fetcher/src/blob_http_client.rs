@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use tokio::time::{sleep, Duration};
 
-use crate::types::ParseError;
+use crate::ParseError;
 
 /// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
 const MAX_RETRIES: u8 = 5;

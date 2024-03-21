@@ -3,7 +3,7 @@ use ethers::{
     types::U256,
 };
 
-use crate::types::ParseError;
+use crate::ParseError;
 
 pub struct CalldataToken {
     pub new_blocks_data: NewBlocksDataToken,
