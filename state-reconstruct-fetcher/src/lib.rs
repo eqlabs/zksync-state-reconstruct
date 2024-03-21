@@ -5,4 +5,5 @@ pub mod constants;
 pub mod database;
 pub mod l1_fetcher;
 pub mod metrics;
+pub mod parser;
 pub mod types;
