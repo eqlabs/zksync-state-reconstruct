@@ -31,30 +31,24 @@ impl BlobHttpClient {
 
     pub async fn get_blob(&self, kzg_commitment: &[u8]) -> Result<Vec<u8>, ParseError> {
         let url = self.format_url(kzg_commitment);
+        tracing::info!("url = {}", url);
         for attempt in 1..=MAX_RETRIES {
             match self.retrieve_url(&url).await {
-                Ok(response) => match response.text().await {
-                    Ok(text) => match get_blob_data(&text) {
-                        Ok(data) => {
-                            let plain = if let Some(p) = data.strip_prefix("0x") {
-                                p
-                            } else {
-                                &data
-                            };
-                            return hex::decode(plain).map_err(|e| {
-                                ParseError::BlobFormatError(plain.to_string(), e.to_string())
-                            });
-                        }
-                        Err(e) => {
-                            tracing::error!("failed parsing response of {url}");
-                            return Err(e);
-                        }
-                    },
-                    Err(e) => {
-                        tracing::error!("attempt {}: {} failed: {:?}", attempt, url, e);
-                        sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
-                    }
-                },
+                Ok(response) => {
+                    tracing::info!("attempt {}: got response", attempt);
+                    let Err(x) = response.text().await else {
+                        continue;
+                    };
+                    tracing::info!("got x: {:?}", x);
+                    let data = get_blob_data("y")?;
+                    let plain = if let Some(p) = data.strip_prefix("0x") {
+                        p
+                    } else {
+                        &data
+                    };
+                    return hex::decode(plain)
+                        .map_err(|e| ParseError::BlobFormatError(plain.to_string(), e.to_string()));
+                }
                 Err(e) => {
                     tracing::error!("attempt {}: GET {} failed: {:?}", attempt, url, e);
                     sleep(Duration::from_secs(FAILED_FETCH_RETRY_INTERVAL_S)).await;
