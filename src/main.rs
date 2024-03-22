@@ -15,7 +15,7 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
+use processor::snapshot::{exporter::SnapshotExporter, SnapshotBuilder};
 use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
