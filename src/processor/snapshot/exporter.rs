@@ -4,8 +4,8 @@ use std::{
 };
 
 use bytes::BytesMut;
-use deflate::deflate_bytes_gzip;
 use eyre::Result;
+use flate2::{write::GzEncoder, Compression};
 use prost::Message;
 
 use super::{
@@ -87,19 +87,19 @@ impl SnapshotExporter {
             .into_string()
             .expect("path to string");
 
-        let mut outfile = std::fs::OpenOptions::new()
+        // Serialize chunk.
+        factory_deps.encode(&mut buf)?;
+
+        let outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .open(path)?;
 
-        // Serialize chunk.
-        factory_deps.encode(&mut buf)?;
-
         // Wrap in gzip compression before writing.
-        let compressed_buf = deflate_bytes_gzip(&buf);
-        outfile.write_all(&compressed_buf)?;
-        outfile.flush()?;
+        let mut encoder = GzEncoder::new(outfile, Compression::default());
+        encoder.write_all(&buf)?;
+        encoder.finish()?;
 
         Ok(())
     }
@@ -162,19 +162,19 @@ impl SnapshotExporter {
                         .expect("path to string"),
                 });
 
-            let mut outfile = std::fs::OpenOptions::new()
+            // Serialize chunk.
+            chunk.encode(&mut buf)?;
+
+            let outfile = std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(false)
                 .open(path)?;
 
-            // Serialize chunk.
-            chunk.encode(&mut buf)?;
-
             // Wrap in gzip compression before writing.
-            let compressed_buf = deflate_bytes_gzip(&buf);
-            outfile.write_all(&compressed_buf)?;
-            outfile.flush()?;
+            let mut encoder = GzEncoder::new(outfile, Compression::default());
+            encoder.write_all(&buf)?;
+            encoder.finish()?;
 
             // Clear $tmp buffer.
             buf.truncate(0);
