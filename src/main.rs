@@ -15,7 +15,9 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::{exporter::SnapshotExporter, SnapshotBuilder};
+use processor::snapshot::{
+    exporter::SnapshotExporter, importer::SnapshotImporter, SnapshotBuilder,
+};
 use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
@@ -96,6 +98,18 @@ async fn main() -> Result<()> {
                     }
 
                     tracing::info!("{num_objects} objects imported from {file}");
+                }
+                ReconstructSource::Snapshot { directory } => {
+                    let processor = TreeProcessor::new(db_path.clone()).await?;
+                    let importer = SnapshotImporter::new(PathBuf::from(directory));
+                    let (tx, rx) = mpsc::channel::<CommitBlock>(5);
+
+                    let processor_handle = tokio::spawn(async move {
+                        processor.run(rx).await;
+                    });
+
+                    importer.run(tx).await;
+                    processor_handle.await?;
                 }
             }
         }

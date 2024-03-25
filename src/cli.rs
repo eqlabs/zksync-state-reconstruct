@@ -53,6 +53,11 @@ pub enum ReconstructSource {
         /// The path of the file to import state from.
         file: String,
     },
+    /// Fetch data from snapshot.
+    Snapshot {
+        /// The directory where snapshot files are stored.
+        directory: String,
+    },
 }
 
 #[derive(ValueEnum, Clone)]

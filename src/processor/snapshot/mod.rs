@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 pub mod exporter;
+pub mod importer;
 
 mod bytecode;
 mod database;
