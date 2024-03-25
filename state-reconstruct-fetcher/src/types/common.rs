@@ -1,7 +1,7 @@
 //! A collection of functions that get reused throughout format versions.
-use std::{io::Write, sync::{Mutex, OnceLock}};
+use std::{io::Read, sync::{Mutex, OnceLock}};
 
-use brotlic::CompressorWriter;
+use bzip2::{Compression, read::BzEncoder};
 use ethers::{abi, types::U256};
 
 use super::{L2ToL1Pubdata, PackingType, ParseError};
@@ -146,13 +146,10 @@ pub fn boojum_metrics() -> &'static Mutex<BoojumMetrics> {
 
 // TODO: Move these to a dedicated parser struct.
 pub fn parse_resolved_pubdata(bytes: &[u8]) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut compressor = CompressorWriter::new(Vec::new());
-    let compressed = if let Ok(_) = compressor.write_all(bytes) {
-        if let Ok(cd) = compressor.into_inner() {
-            cd.len()
-        } else {
-            0
-        }
+    let mut compressor = BzEncoder::new(bytes, Compression::best());
+    let mut cd = Vec::new();
+    let compressed = if let Ok(sz) = compressor.read_to_end(&mut cd) {
+        sz
     } else {
         0
     };
