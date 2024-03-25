@@ -25,6 +25,8 @@ use super::Processor;
 use crate::processor::snapshot::types::MiniblockNumber;
 
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
+pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
+pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME: &str = "factory_deps.dat";
 
 pub struct SnapshotBuilder {
     database: SnapshotDB,

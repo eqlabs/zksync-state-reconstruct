@@ -108,7 +108,7 @@ async fn main() -> Result<()> {
                         processor.run(rx).await;
                     });
 
-                    importer.run(tx).await;
+                    importer.run(tx).await?;
                     processor_handle.await?;
                 }
             }

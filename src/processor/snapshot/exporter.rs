@@ -11,7 +11,7 @@ use prost::Message;
 use super::{
     database::{self, SnapshotDB},
     types::{self, SnapshotFactoryDependency, SnapshotHeader},
-    DEFAULT_DB_PATH,
+    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME, SNAPSHOT_HEADER_FILE_NAME,
 };
 
 pub mod protobuf {
@@ -42,10 +42,7 @@ impl SnapshotExporter {
         self.export_storage_logs(chunk_size, &mut header)?;
         self.export_factory_deps(&mut header)?;
 
-        let path = PathBuf::new()
-            .join(&self.basedir)
-            .join("snapshot-header.json");
-
+        let path = self.basedir.join(SNAPSHOT_HEADER_FILE_NAME);
         let outfile = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -80,7 +77,7 @@ impl SnapshotExporter {
             buf.reserve(fd_len - buf.capacity());
         }
 
-        let path = PathBuf::new().join(&self.basedir).join("factory_deps.dat");
+        let path = self.basedir.join(SNAPSHOT_FACTORY_DEPS_FILE_NAME);
         header.factory_deps_filepath = path
             .clone()
             .into_os_string()
