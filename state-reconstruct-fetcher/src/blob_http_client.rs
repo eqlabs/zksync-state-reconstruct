@@ -1,5 +1,7 @@
-use blobscan_client::{BlobError, BlobSupport};
+use blobscan_client::{BlobResponseFormatError, BlobSupport};
 use tokio::time::{sleep, Duration};
+
+use crate::types::ParseError;
 
 /// `MAX_RETRIES` is the maximum number of retries on failed blob retrieval.
 const MAX_RETRIES: u8 = 5;
@@ -24,7 +26,7 @@ impl BlobHttpClient {
         Ok(Self { client, support })
     }
 
-    pub async fn get_blob(&self, kzg_commitment: &[u8]) -> Result<Vec<u8>, BlobError> {
+    pub async fn get_blob(&self, kzg_commitment: &[u8]) -> Result<Vec<u8>, ParseError> {
         let url = self.support.format_url(kzg_commitment);
         for attempt in 1..=MAX_RETRIES {
             match self.client.get(&url).send().await {
@@ -37,12 +39,12 @@ impl BlobHttpClient {
                                 &data
                             };
                             return hex::decode(plain).map_err(|e| {
-                                BlobError::FormatError(plain.to_string(), e.to_string())
+                                BlobResponseFormatError(plain.to_string(), e.to_string()).into()
                             });
                         }
                         Err(e) => {
                             tracing::error!("failed parsing response of {url}");
-                            return Err(e);
+                            return Err(e.into());
                         }
                     },
                     Err(e) => {
@@ -56,6 +58,6 @@ impl BlobHttpClient {
                 }
             }
         }
-        Err(BlobError::StorageError(url))
+        Err(ParseError::BlobStorageError(url))
     }
 }

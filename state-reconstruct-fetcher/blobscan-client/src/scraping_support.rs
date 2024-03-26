@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::blob_support::{BlobError, BlobSupport};
+use crate::blob_support::{BlobResponseFormatError, BlobSupport};
 
 #[derive(Deserialize)]
 struct JsonResponse {
@@ -43,10 +43,10 @@ impl BlobSupport for ScrapingSupport {
         url.to_string()
     }
 
-    fn get_blob_data(&self, json_str: &str) -> Result<String, BlobError> {
+    fn get_blob_data(&self, json_str: &str) -> Result<String, BlobResponseFormatError> {
         match serde_json::from_str::<JsonResponse>(json_str) {
             Ok(rsp) => Ok(rsp.result.data.json.data),
-            Err(e) => Err(BlobError::FormatError(json_str.to_string(), e.to_string())),
+            Err(e) => Err(BlobResponseFormatError(json_str.to_string(), e.to_string())),
         }
     }
 }

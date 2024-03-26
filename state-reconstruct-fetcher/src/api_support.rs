@@ -1,4 +1,4 @@
-use blobscan_client::{BlobError, BlobSupport};
+use blobscan_client::{BlobResponseFormatError, BlobSupport};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -21,10 +21,10 @@ impl BlobSupport for ApiSupport {
         format!("{}0x{}", self.url_base, hex::encode(kzg_commitment))
     }
 
-    fn get_blob_data(&self, json_str: &str) -> Result<String, BlobError> {
+    fn get_blob_data(&self, json_str: &str) -> Result<String, BlobResponseFormatError> {
         match serde_json::from_str::<JsonResponse>(json_str) {
             Ok(data) => Ok(data.data),
-            Err(e) => Err(BlobError::FormatError(json_str.to_string(), e.to_string())),
+            Err(e) => Err(BlobResponseFormatError(json_str.to_string(), e.to_string())),
         }
     }
 }

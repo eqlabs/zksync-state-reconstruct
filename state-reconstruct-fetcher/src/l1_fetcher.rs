@@ -491,8 +491,8 @@ impl L1Fetcher {
                                     }
                                     sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
                                 }
-                                ParseError::BlobFormatError(data, inner) => {
-                                    tracing::error!("Cannot parse {}: {}", data, inner);
+                                ParseError::BlobFormatError(inner) => {
+                                    tracing::error!("Cannot parse {}: {}", inner.0, inner.1);
                                     cancellation_token.cancel();
                                     return last_block_number_processed;
                                 }
