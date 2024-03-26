@@ -5,12 +5,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = ["state-reconstruct-fetcher"]
+members = ["state-reconstruct-fetcher", "state-reconstruct-fetcher/blobscan-client"]
 
 [dependencies]
 async-trait = "0.1.74"
 bincode = "1"
 blake2 = "0.10.6"
+blobscan-client = { path = "./state-reconstruct-fetcher/blobscan-client" }
 bytes = "1.5"
 chrono = "0.4.31"
 clap = { version = "4.4.7", features = ["derive", "env"] }
