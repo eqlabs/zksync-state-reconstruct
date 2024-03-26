@@ -451,6 +451,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blobscan-client"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4455,6 +4469,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "blobscan-client",
  "bytes",
  "chrono",
  "clap",
@@ -4486,6 +4501,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "blake2 0.10.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "blobscan-client",
  "chrono",
  "ethers",
  "eyre",

@@ -1,5 +1,6 @@
 use std::{cmp, fs::File, future::Future, sync::Arc};
 
+use blobscan_client::{BlobSupport, ScrapingSupport};
 use ethers::{
     abi::{Contract, Function},
     prelude::*,
@@ -14,6 +15,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    api_support::ApiSupport,
     blob_http_client::BlobHttpClient,
     constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
@@ -450,7 +452,7 @@ impl L1Fetcher {
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
-        let client = BlobHttpClient::new(self.config.blobs_url.clone())?;
+        let client = BlobHttpClient::new(make_support(self.config.blobs_url.clone()))?;
         Ok(tokio::spawn({
             async move {
                 let mut boojum_mode = false;
@@ -543,6 +545,14 @@ impl L1Fetcher {
             }
         }
         Err(err.into())
+    }
+}
+
+fn make_support(url: String) -> Box<dyn BlobSupport + Send + Sync> {
+    if url.starts_with("https://blobscan.com") {
+        Box::<ScrapingSupport>::default()
+    } else {
+        Box::new(ApiSupport::new(url))
     }
 }
 
