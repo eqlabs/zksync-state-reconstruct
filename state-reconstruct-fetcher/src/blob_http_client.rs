@@ -88,4 +88,3 @@ fn get_blob_data(json_str: &str) -> Result<String, ParseError> {
         )),
     }
 }
-

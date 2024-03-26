@@ -1,8 +1,11 @@
 //! A collection of functions that get reused throughout format versions.
-use std::{io::Read, sync::{Mutex, OnceLock}};
+use std::{
+    io::Read,
+    sync::{Mutex, OnceLock},
+};
 
-use bzip2::{Compression, read::BzEncoder};
 use ethers::{abi, types::U256};
+use xz2::read::XzEncoder;
 
 use super::{L2ToL1Pubdata, PackingType, ParseError};
 use crate::constants::zksync::{
@@ -146,14 +149,17 @@ pub fn boojum_metrics() -> &'static Mutex<BoojumMetrics> {
 
 // TODO: Move these to a dedicated parser struct.
 pub fn parse_resolved_pubdata(bytes: &[u8]) -> Result<Vec<L2ToL1Pubdata>, ParseError> {
-    let mut compressor = BzEncoder::new(bytes, Compression::best());
+    let mut compressor = XzEncoder::new(bytes, 6);
     let mut cd = Vec::new();
     let compressed = if let Ok(sz) = compressor.read_to_end(&mut cd) {
         sz
     } else {
         0
     };
-    boojum_metrics().lock().unwrap().add(bytes.len() as u64, compressed as u64);
+    boojum_metrics()
+        .lock()
+        .unwrap()
+        .add(bytes.len() as u64, compressed as u64);
     let mut l2_to_l1_pubdata = Vec::new();
 
     let mut pointer = 0;
