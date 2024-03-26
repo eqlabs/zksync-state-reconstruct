@@ -24,7 +24,7 @@ struct JsonResponseJson {
 }
 
 #[derive(Default)]
-pub struct ScrapingSupport {}
+pub struct ScrapingSupport;
 
 impl BlobSupport for ScrapingSupport {
     fn format_url(&self, kzg_commitment: &[u8]) -> String {
