@@ -1,10 +1,10 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
+pub mod database;
 pub mod exporter;
 pub mod importer;
 
 mod bytecode;
-mod database;
 mod types;
 
 use async_trait::async_trait;

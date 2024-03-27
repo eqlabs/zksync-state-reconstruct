@@ -104,7 +104,7 @@ impl SnapshotDB {
                     idx_bytes[7],
                 ])
             } else {
-                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(1))?;
+                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(0))?;
                 0
             },
         )
@@ -190,3 +190,4 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 }
+

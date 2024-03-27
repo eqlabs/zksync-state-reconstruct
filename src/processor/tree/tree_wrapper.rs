@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, sync::Arc};
 
 use blake2::{Blake2s256, Digest};
-use ethers::types::{Address, H256, U256};
+use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
     constants::storage::INITAL_STATE_PATH,
@@ -14,6 +14,7 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
+use crate::processor::snapshot::exporter::protobuf::SnapshotStorageLogsChunk;
 
 #[derive(Error, Debug)]
 pub enum TreeError {
@@ -121,6 +122,34 @@ impl TreeWrapper {
             self.tree.extend(rollback_entries);
             Err(TreeError::BlockMismatch.into())
         }
+    }
+
+    pub async fn restore_from_snapshot(
+        &mut self,
+        chunk: SnapshotStorageLogsChunk,
+        l1_batch_number: U64,
+    ) -> Result<()> {
+        let mut tree_entries = Vec::new();
+
+        for log in chunk.storage_logs {
+            let key = U256::from_big_endian(log.storage_key());
+            let index = log.enumeration_index();
+
+            let value = H256::from(<&[u8; 32]>::try_from(log.storage_value()).unwrap());
+
+            tree_entries.push(TreeEntry::new(key, index, value));
+            self.snapshot
+                .lock()
+                .await
+                .add_key(&key)
+                .expect("cannot add key");
+        }
+
+        self.tree.extend(tree_entries);
+        self.snapshot
+            .lock()
+            .await
+            .set_latest_l1_block_number(l1_batch_number.as_u64())
     }
 
     fn process_value(&mut self, key: U256, value: PackingType) -> H256 {

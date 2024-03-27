@@ -100,16 +100,9 @@ async fn main() -> Result<()> {
                     tracing::info!("{num_objects} objects imported from {file}");
                 }
                 ReconstructSource::Snapshot { directory } => {
-                    let processor = TreeProcessor::new(db_path.clone()).await?;
-                    let importer = SnapshotImporter::new(PathBuf::from(directory));
-                    let (tx, rx) = mpsc::channel::<CommitBlock>(5);
-
-                    let processor_handle = tokio::spawn(async move {
-                        processor.run(rx).await;
-                    });
-
-                    importer.run(tx).await?;
-                    processor_handle.await?;
+                    let importer =
+                        SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
+                    importer.run().await?;
                 }
             }
         }

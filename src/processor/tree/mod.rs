@@ -1,5 +1,5 @@
 pub mod query_tree;
-mod tree_wrapper;
+pub mod tree_wrapper;
 
 use std::{path::PathBuf, sync::Arc};
 

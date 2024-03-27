@@ -54,6 +54,7 @@ pub enum ReconstructSource {
         file: String,
     },
     /// Fetch data from snapshot.
+    // TODO: Make this a flag instead of separate command.
     Snapshot {
         /// The directory where snapshot files are stored.
         directory: String,
