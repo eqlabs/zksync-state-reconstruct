@@ -126,36 +126,37 @@ impl TreeWrapper {
 
     pub async fn restore_from_snapshot(
         &mut self,
-        chunk: SnapshotStorageLogsChunk,
+        chunks: Vec<SnapshotStorageLogsChunk>,
         l1_batch_number: U64,
     ) -> Result<()> {
         let mut tree_entries = Vec::new();
 
-        for log in &chunk.storage_logs {
-            let key = U256::from_big_endian(log.storage_key());
-            let index = log.enumeration_index();
+        for chunk in &chunks {
+            for log in &chunk.storage_logs {
+                let key = U256::from_big_endian(log.storage_key());
+                let index = log.enumeration_index();
 
-            let value = H256::from(<&[u8; 32]>::try_from(log.storage_value()).unwrap());
+                let value_bytes: [u8; 32] = log.storage_value().try_into()?;
+                let value = H256::from(&value_bytes);
 
-            tree_entries.push(TreeEntry::new(key, index, value));
-            self.snapshot
-                .lock()
-                .await
-                .add_key(&key)
-                .expect("cannot add key");
+                tree_entries.push(TreeEntry::new(key, index, value));
+                self.snapshot
+                    .lock()
+                    .await
+                    .add_key(&key)
+                    .expect("cannot add key");
+            }
         }
 
+        let num_tree_entries = tree_entries.len();
         self.tree.extend(tree_entries);
 
-        tracing::info!(
-            "Succesfully imported snapshot containing {} storage logs!",
-            chunk.storage_logs.len()
-        );
+        tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
 
-        self.snapshot
-            .lock()
-            .await
-            .set_latest_l1_block_number(l1_batch_number.as_u64())
+        let snapshot = self.snapshot.lock().await;
+        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64())?;
+
+        Ok(())
     }
 
     fn process_value(&mut self, key: U256, value: PackingType) -> H256 {

@@ -38,7 +38,6 @@ pub struct SnapshotImporter {
 impl SnapshotImporter {
     pub async fn new(directory: PathBuf, db_path: &Path) -> Result<Self> {
         let inner_db_path = db_path.join(INNER_DB_NAME);
-        // NOTE: Remove dep on snapshot?
         let new_state = InnerDB::new(inner_db_path.clone())?;
         let snapshot = Arc::new(Mutex::new(new_state));
         let tree = TreeWrapper::new(db_path, snapshot.clone(), true).await?;
@@ -49,7 +48,7 @@ impl SnapshotImporter {
     pub async fn run(mut self) -> Result<()> {
         let header = self.read_header()?;
         let factory_deps = self.read_factory_deps()?;
-        let storage_logs_chunk = self.read_storage_logs_chunks()?;
+        let storage_logs_chunk = self.read_storage_logs_chunks(&header)?;
 
         self.tree
             .restore_from_snapshot(storage_logs_chunk, header.l1_batch_number)
@@ -76,15 +75,31 @@ impl SnapshotImporter {
         Ok(factory_deps)
     }
 
-    fn read_storage_logs_chunks(&self) -> Result<SnapshotStorageLogsChunk> {
-        let factory_deps_path = self.directory.join("1.gz");
-        let bytes = fs::read(factory_deps_path)?;
-        let mut decoder = GzDecoder::new(&bytes[..]);
+    fn read_storage_logs_chunks(
+        &self,
+        header: &SnapshotHeader,
+    ) -> Result<Vec<SnapshotStorageLogsChunk>> {
+        // NOTE: I think these are sorted by default, but if not, we need to sort them
+        // before extracting the filepaths.
+        let filepaths = header
+            .storage_logs_chunks
+            .iter()
+            .map(|meta| PathBuf::from(&meta.filepath));
 
-        let mut decompressed_bytes = Vec::new();
-        decoder.read_to_end(&mut decompressed_bytes)?;
+        let mut chunks = Vec::with_capacity(filepaths.len());
+        for path in filepaths {
+            let factory_deps_path = self
+                .directory
+                .join(path.file_name().expect("path has no file name"));
+            let bytes = fs::read(factory_deps_path)?;
+            let mut decoder = GzDecoder::new(&bytes[..]);
 
-        let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&decompressed_bytes[..])?;
-        Ok(storage_logs_chunk)
+            let mut decompressed_bytes = Vec::new();
+            decoder.read_to_end(&mut decompressed_bytes)?;
+
+            let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&decompressed_bytes[..])?;
+            chunks.push(storage_logs_chunk);
+        }
+        Ok(chunks)
     }
 }
