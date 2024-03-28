@@ -53,12 +53,6 @@ pub enum ReconstructSource {
         /// The path of the file to import state from.
         file: String,
     },
-    /// Fetch data from snapshot.
-    // TODO: Make this a flag instead of separate command.
-    Snapshot {
-        /// The directory where snapshot files are stored.
-        directory: String,
-    },
 }
 
 #[derive(ValueEnum, Clone)]
@@ -85,6 +79,10 @@ pub enum Command {
         /// The path to the storage solution.
         #[arg(short, long, env = "ZK_SYNC_DB_PATH")]
         db_path: Option<String>,
+        /// If present, try to restore state from snapshot files contained in the specified
+        /// directory. Note that this will only work when supplied with a fresh database.
+        #[arg(long)]
+        snapshot: Option<String>,
     },
 
     /// Query the local storage, and optionally, return a JSON-payload of the data.

@@ -61,11 +61,22 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.subcommand {
-        Command::Reconstruct { source, db_path } => {
+        Command::Reconstruct {
+            source,
+            db_path,
+            snapshot,
+        } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
+
+            if let Some(directory) = snapshot {
+                tracing::info!("Trying to restore state from snapshot...");
+                let importer =
+                    SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
+                importer.run().await?;
+            }
 
             match source {
                 ReconstructSource::L1 { l1_fetcher_options } => {
@@ -98,11 +109,6 @@ async fn main() -> Result<()> {
                     }
 
                     tracing::info!("{num_objects} objects imported from {file}");
-                }
-                ReconstructSource::Snapshot { directory } => {
-                    let importer =
-                        SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
-                    importer.run().await?;
                 }
             }
         }

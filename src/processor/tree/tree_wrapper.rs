@@ -131,7 +131,7 @@ impl TreeWrapper {
     ) -> Result<()> {
         let mut tree_entries = Vec::new();
 
-        for log in chunk.storage_logs {
+        for log in &chunk.storage_logs {
             let key = U256::from_big_endian(log.storage_key());
             let index = log.enumeration_index();
 
@@ -146,6 +146,12 @@ impl TreeWrapper {
         }
 
         self.tree.extend(tree_entries);
+
+        tracing::info!(
+            "Succesfully imported snapshot containing {} storage logs!",
+            chunk.storage_logs.len()
+        );
+
         self.snapshot
             .lock()
             .await
