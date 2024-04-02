@@ -24,7 +24,7 @@ use super::{
         SnapshotFactoryDependencies, SnapshotStorageLog, SnapshotStorageLogsChunk,
     },
     types::SnapshotHeader,
-    SNAPSHOT_FACTORY_DEPS_FILE_NAME, SNAPSHOT_HEADER_FILE_NAME,
+    SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
 use crate::processor::tree::tree_wrapper::TreeWrapper;
 
@@ -47,7 +47,7 @@ impl SnapshotImporter {
 
     pub async fn run(mut self) -> Result<()> {
         let header = self.read_header()?;
-        let factory_deps = self.read_factory_deps()?;
+        let factory_deps = self.read_factory_deps(&header)?;
         let storage_logs_chunk = self.read_storage_logs_chunks(&header)?;
 
         self.tree
@@ -63,8 +63,11 @@ impl SnapshotImporter {
         Ok(header)
     }
 
-    fn read_factory_deps(&self) -> Result<SnapshotFactoryDependencies> {
-        let factory_deps_path = self.directory.join(SNAPSHOT_FACTORY_DEPS_FILE_NAME);
+    fn read_factory_deps(&self, header: &SnapshotHeader) -> Result<SnapshotFactoryDependencies> {
+        let factory_deps_path = self.directory.join(format!(
+            "snapshot_l1_batch_{}_{}",
+            header.l1_batch_number, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX
+        ));
         let bytes = fs::read(factory_deps_path)?;
         let mut decoder = GzDecoder::new(&bytes[..]);
 
@@ -97,6 +100,9 @@ impl SnapshotImporter {
             let mut decompressed_bytes = Vec::new();
             decoder.read_to_end(&mut decompressed_bytes)?;
 
+            // TODO: It would be nice to avoid the intermediary step of decoding. Something like
+            // implementing a method on the types::* that does it automatically. Will improve
+            // readabitly for the export code too as a bonus.
             let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&decompressed_bytes[..])?;
             chunks.push(storage_logs_chunk);
         }

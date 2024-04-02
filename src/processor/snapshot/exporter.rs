@@ -11,7 +11,7 @@ use prost::Message;
 use super::{
     database::{self, SnapshotDB},
     types::{self, SnapshotFactoryDependency, SnapshotHeader},
-    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME, SNAPSHOT_HEADER_FILE_NAME,
+    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
 
 pub mod protobuf {
@@ -24,17 +24,17 @@ pub struct SnapshotExporter {
 }
 
 impl SnapshotExporter {
-    pub fn new(basedir: &Path, db_path: Option<String>) -> Self {
+    pub fn new(basedir: &Path, db_path: Option<String>) -> Result<Self> {
         let db_path = match db_path {
             Some(p) => PathBuf::from(p),
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let database = SnapshotDB::new_read_only(db_path).unwrap();
-        Self {
+        let database = SnapshotDB::new_read_only(db_path)?;
+        Ok(Self {
             basedir: basedir.to_path_buf(),
             database,
-        }
+        })
     }
 
     pub fn export_snapshot(&self, chunk_size: u64) -> Result<()> {
@@ -77,7 +77,10 @@ impl SnapshotExporter {
             buf.reserve(fd_len - buf.capacity());
         }
 
-        let path = self.basedir.join(SNAPSHOT_FACTORY_DEPS_FILE_NAME);
+        let path = self.basedir.join(format!(
+            "snapshot_l1_batch_{}_{}",
+            header.l1_batch_number, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX
+        ));
         header.factory_deps_filepath = path
             .clone()
             .into_os_string()
@@ -103,7 +106,7 @@ impl SnapshotExporter {
 
     fn export_storage_logs(&self, chunk_size: u64, header: &mut SnapshotHeader) -> Result<()> {
         let mut buf = BytesMut::new();
-        let mut chunk_index = 0;
+        let mut chunk_id = 0;
 
         let index_to_key_map = self.database.cf_handle(database::INDEX_TO_KEY_MAP).unwrap();
         let mut iterator = self
@@ -144,15 +147,16 @@ impl SnapshotExporter {
                 buf.reserve(chunk_len - buf.capacity());
             }
 
-            chunk_index += 1;
-            let path = PathBuf::new()
-                .join(&self.basedir)
-                .join(format!("{chunk_index}.gz"));
+            let path = PathBuf::new().join(&self.basedir).join(format!(
+                "snapshot_l1_batch_{}_storage_logs_part_{:0>4}.proto.gzip",
+                header.l1_batch_number, chunk_id
+            ));
+            chunk_id += 1;
 
             header
                 .storage_logs_chunks
                 .push(types::SnapshotStorageLogsChunkMetadata {
-                    chunk_id: chunk_index,
+                    chunk_id,
                     filepath: path
                         .clone()
                         .into_os_string()
