@@ -225,7 +225,7 @@ impl L1Fetcher {
         hash_tx: mpsc::Sender<H256>,
         cancellation_token: CancellationToken,
         mut current_l1_block_number: U64,
-        mut end_block: Option<U64>,
+        max_end_block: Option<U64>,
         disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<u64>> {
         let metrics = self.metrics.clone();
@@ -236,6 +236,7 @@ impl L1Fetcher {
             async move {
                 let mut latest_l2_block_number = U256::zero();
                 let mut previous_hash = None;
+                let mut end_block: Option<U64> = None;
                 loop {
                     // Break on the receivement of a `ctrl_c` signal.
                     if cancellation_token.is_cancelled() {
@@ -251,7 +252,17 @@ impl L1Fetcher {
                         .await
                         {
                             if let Some(found_block) = new_end {
-                                if let Some(end_block_number) = found_block.number {
+                                if let Some(ebn) = found_block.number {
+                                    let end_block_number =
+                                        if let Some(end_block_limit) = max_end_block {
+                                            if end_block_limit < ebn {
+                                                end_block_limit
+                                            } else {
+                                                ebn
+                                            }
+                                        } else {
+                                            ebn
+                                        };
                                     end_block = Some(end_block_number);
                                     metrics.lock().await.last_l1_block = end_block_number.as_u64();
                                 }
