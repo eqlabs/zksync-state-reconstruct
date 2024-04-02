@@ -190,4 +190,3 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 }
-
