@@ -174,6 +174,8 @@ async fn main() -> Result<()> {
             std::fs::create_dir_all(export_path)?;
             let exporter = SnapshotExporter::new(export_path, db_path)?;
             exporter.export_snapshot(chunk_size)?;
+
+            tracing::info!("Succesfully exported snapshot files to \"{directory}\"!");
         }
     }
 
