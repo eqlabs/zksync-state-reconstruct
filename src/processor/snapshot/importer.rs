@@ -1,4 +1,3 @@
-#![allow(warnings)]
 use std::{
     fs,
     io::Read,
@@ -6,23 +5,14 @@ use std::{
     sync::Arc,
 };
 
-use ethers::types::U256;
 use eyre::Result;
 use flate2::read::GzDecoder;
-use indexmap::IndexMap;
 use prost::Message;
-use state_reconstruct_fetcher::{
-    constants::storage::INNER_DB_NAME,
-    database::InnerDB,
-    types::{CommitBlock, PackingType},
-};
-use tokio::sync::{mpsc, Mutex};
+use state_reconstruct_fetcher::{constants::storage::INNER_DB_NAME, database::InnerDB};
+use tokio::sync::Mutex;
 
 use super::{
-    database::SnapshotDB,
-    exporter::protobuf::{
-        SnapshotFactoryDependencies, SnapshotStorageLog, SnapshotStorageLogsChunk,
-    },
+    exporter::protobuf::{SnapshotFactoryDependencies, SnapshotStorageLogsChunk},
     types::SnapshotHeader,
     SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
@@ -47,7 +37,7 @@ impl SnapshotImporter {
 
     pub async fn run(mut self) -> Result<()> {
         let header = self.read_header()?;
-        let factory_deps = self.read_factory_deps(&header)?;
+        let _factory_deps = self.read_factory_deps(&header)?;
         let storage_logs_chunk = self.read_storage_logs_chunks(&header)?;
 
         self.tree
