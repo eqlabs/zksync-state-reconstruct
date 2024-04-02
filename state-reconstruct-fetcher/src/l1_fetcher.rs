@@ -52,8 +52,6 @@ pub struct L1FetcherOptions {
     pub blobs_url: String,
     /// Ethereum block number to start state import from.
     pub start_block: u64,
-    /// The number of blocks to filter & process in one step over.
-    pub block_step: u64,
     /// The number of blocks to process from Ethereum.
     pub block_count: Option<u64>,
     /// If present, don't poll for new blocks after reaching the end.
@@ -236,7 +234,7 @@ impl L1Fetcher {
             async move {
                 let mut latest_l2_block_number = U256::zero();
                 let mut previous_hash = None;
-                let mut end_block: Option<U64> = None;
+                let mut end_block = None;
                 loop {
                     // Break on the receivement of a `ctrl_c` signal.
                     if cancellation_token.is_cancelled() {

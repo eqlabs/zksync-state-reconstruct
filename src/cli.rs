@@ -16,9 +16,6 @@ pub struct L1FetcherOptions {
     /// Ethereum block number to start state import from.
     #[arg(short, long, default_value_t = ethereum::GENESIS_BLOCK)]
     pub start_block: u64,
-    /// The number of blocks to filter & process in one step over.
-    #[arg(short, long, default_value_t = ethereum::BLOCK_STEP)]
-    pub block_step: u64,
     /// The number of blocks to process from Ethereum.
     #[arg(long)]
     pub block_count: Option<u64>,
@@ -34,7 +31,6 @@ impl From<L1FetcherOptions> for FetcherOptions {
             http_url: opt.http_url,
             blobs_url: opt.blobs_url,
             start_block: opt.start_block,
-            block_step: opt.block_step,
             block_count: opt.block_count,
             disable_polling: opt.disable_polling,
         }
