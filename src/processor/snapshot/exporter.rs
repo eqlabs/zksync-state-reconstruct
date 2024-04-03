@@ -113,6 +113,11 @@ impl SnapshotExporter {
         let mut buf = BytesMut::new();
         let mut chunk_id = 0;
 
+        let num_logs = self.database.get_last_repeated_key_index()?;
+        tracing::info!("Found {num_logs} logs.");
+
+        let total_num_chunks = (num_logs / chunk_size) + 1;
+
         let index_to_key_map = self.database.cf_handle(database::INDEX_TO_KEY_MAP).unwrap();
         let mut iterator = self
             .database
@@ -121,7 +126,7 @@ impl SnapshotExporter {
         let mut has_more = true;
 
         while has_more {
-            tracing::info!("Serializing chunk {chunk_id}...");
+            tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, total_num_chunks);
 
             let mut chunk = protobuf::SnapshotStorageLogsChunk {
                 storage_logs: vec![],
@@ -187,7 +192,7 @@ impl SnapshotExporter {
             // Clear $tmp buffer.
             buf.truncate(0);
 
-            tracing::info!("Chunk {chunk_id} was successfully serialized!");
+            tracing::info!("Chunk {} was successfully serialized!", chunk_id + 1);
             chunk_id += 1;
         }
 
