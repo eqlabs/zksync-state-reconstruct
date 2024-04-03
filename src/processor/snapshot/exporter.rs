@@ -55,6 +55,8 @@ impl SnapshotExporter {
     }
 
     fn export_factory_deps(&self, header: &mut SnapshotHeader) -> Result<()> {
+        tracing::info!("Exporting factory dependencies...");
+
         let mut buf = BytesMut::new();
 
         let storage_logs = self.database.cf_handle(database::FACTORY_DEPS).unwrap();
@@ -101,12 +103,20 @@ impl SnapshotExporter {
         encoder.write_all(&buf)?;
         encoder.finish()?;
 
+        tracing::info!("All factory dependencies were successfully serialized!");
         Ok(())
     }
 
     fn export_storage_logs(&self, chunk_size: u64, header: &mut SnapshotHeader) -> Result<()> {
+        tracing::info!("Exporting storage logs...");
+
         let mut buf = BytesMut::new();
         let mut chunk_id = 0;
+
+        let num_logs = self.database.get_last_repeated_key_index()?;
+        tracing::info!("Found {num_logs} logs.");
+
+        let total_num_chunks = (num_logs / chunk_size) + 1;
 
         let index_to_key_map = self.database.cf_handle(database::INDEX_TO_KEY_MAP).unwrap();
         let mut iterator = self
@@ -116,6 +126,8 @@ impl SnapshotExporter {
         let mut has_more = true;
 
         while has_more {
+            tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, total_num_chunks);
+
             let mut chunk = protobuf::SnapshotStorageLogsChunk {
                 storage_logs: vec![],
             };
@@ -151,7 +163,6 @@ impl SnapshotExporter {
                 "snapshot_l1_batch_{}_storage_logs_part_{:0>4}.proto.gzip",
                 header.l1_batch_number, chunk_id
             ));
-            chunk_id += 1;
 
             header
                 .storage_logs_chunks
@@ -180,8 +191,12 @@ impl SnapshotExporter {
 
             // Clear $tmp buffer.
             buf.truncate(0);
+
+            tracing::info!("Chunk {} was successfully serialized!", chunk_id + 1);
+            chunk_id += 1;
         }
 
+        tracing::info!("All storage logs were successfully serialized!");
         Ok(())
     }
 }
