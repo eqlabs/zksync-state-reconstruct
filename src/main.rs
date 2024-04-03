@@ -15,7 +15,9 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
+use processor::snapshot::{
+    exporter::SnapshotExporter, importer::SnapshotImporter, SnapshotBuilder,
+};
 use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
@@ -59,11 +61,22 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.subcommand {
-        Command::Reconstruct { source, db_path } => {
+        Command::Reconstruct {
+            source,
+            db_path,
+            snapshot,
+        } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
+
+            if let Some(directory) = snapshot {
+                tracing::info!("Trying to restore state from snapshot...");
+                let importer =
+                    SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
+                importer.run().await?;
+            }
 
             match source {
                 ReconstructSource::L1 { l1_fetcher_options } => {
@@ -159,8 +172,10 @@ async fn main() -> Result<()> {
         } => {
             let export_path = Path::new(&directory);
             std::fs::create_dir_all(export_path)?;
-            let exporter = SnapshotExporter::new(export_path, db_path);
+            let exporter = SnapshotExporter::new(export_path, db_path)?;
             exporter.export_snapshot(chunk_size)?;
+
+            tracing::info!("Succesfully exported snapshot files to \"{directory}\"!");
         }
     }
 

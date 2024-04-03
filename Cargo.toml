@@ -15,9 +15,9 @@ blobscan-client = { path = "./state-reconstruct-fetcher/blobscan-client" }
 bytes = "1.5"
 chrono = "0.4.31"
 clap = { version = "4.4.7", features = ["derive", "env"] }
-deflate = { version = "1.0.0", features = ["gzip"] }
 ethers = "1.0.2"
 eyre = "0.6.8"
+flate2 = "1.0.28"
 hex = "0.4.3"
 indexmap = { version = "2.0.2" }
 primitive-types = "0.12.2"

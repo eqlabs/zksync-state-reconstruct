@@ -101,8 +101,8 @@ impl L1Fetcher {
         // use of the snapshot value.
         if current_l1_block_number == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.snapshot {
-                let snapshot = snapshot.lock().await;
-                let snapshot_latest_l1_block_number = snapshot.get_latest_l1_block_number()?;
+                let snapshot_latest_l1_block_number =
+                    snapshot.lock().await.get_latest_l1_block_number()?;
                 if snapshot_latest_l1_block_number > current_l1_block_number {
                     current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
