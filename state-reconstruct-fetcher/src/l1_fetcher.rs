@@ -115,7 +115,7 @@ impl L1Fetcher {
         let end_block = self
             .config
             .block_count
-            .map(|count| U64::from(self.config.start_block + count));
+            .map(|count| (current_l1_block_number + count));
 
         // Initialize metrics with last state, if it exists.
         {
@@ -226,6 +226,10 @@ impl L1Fetcher {
         max_end_block: Option<U64>,
         disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<u64>> {
+        if let Some(end_block_limit) = max_end_block {
+            assert!(current_l1_block_number <= end_block_limit);
+        }
+
         let metrics = self.metrics.clone();
         let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
