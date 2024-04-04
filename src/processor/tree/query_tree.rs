@@ -1,5 +1,6 @@
 use std::{fmt, path::Path};
 
+use eyre::Result;
 use serde::Serialize;
 use zksync_merkle_tree::{MerkleTree, RocksDBWrapper};
 
@@ -20,13 +21,13 @@ impl fmt::Display for RootHashQuery {
 pub struct QueryTree(MerkleTree<RocksDBWrapper>);
 
 impl QueryTree {
-    pub fn new(db_path: &Path) -> Self {
+    pub fn new(db_path: &Path) -> Result<Self> {
         assert!(db_path.exists());
 
-        let db = RocksDBWrapper::new(db_path);
+        let db = RocksDBWrapper::new(db_path)?;
         let tree = MerkleTree::new(db);
 
-        Self(tree)
+        Ok(Self(tree))
     }
 
     pub fn query(&self, query: &Query) -> RootHashQuery {
@@ -37,6 +38,10 @@ impl QueryTree {
 
     fn query_root_hash(&self) -> RootHashQuery {
         RootHashQuery {
+            // Note that the L2 batch number will diverge from what's
+            // published on L1 in case `TreeWrapper::insert_block`
+            // fails (i.e. the program ends with Root hash mismatch
+            // error).
             batch: self.0.latest_version().unwrap_or_default(),
             root_hash: hex::encode(self.0.latest_root_hash()),
         }

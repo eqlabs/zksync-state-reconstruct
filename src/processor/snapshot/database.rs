@@ -1,12 +1,9 @@
-use std::{
-    convert::{Into, TryFrom},
-    ops::Deref,
-    path::PathBuf,
-};
+use std::{ops::Deref, path::PathBuf};
 
-use ethers::types::H256;
+use ethers::types::{H256, U256};
 use eyre::Result;
 use rocksdb::{Options, DB};
+use state_reconstruct_fetcher::types::PackingType;
 use thiserror::Error;
 
 use super::types::{SnapshotFactoryDependency, SnapshotStorageLog};
@@ -50,6 +47,31 @@ impl SnapshotDB {
         Ok(Self(db))
     }
 
+    pub fn process_value(&self, key: U256, value: PackingType) -> H256 {
+        let processed_value = match value {
+            PackingType::NoCompression(v) | PackingType::Transform(v) => v,
+            PackingType::Add(_) | PackingType::Sub(_) => {
+                let mut buffer = [0; 32];
+                key.to_little_endian(&mut buffer);
+                if let Ok(Some(log)) = self.get_storage_log(&buffer) {
+                    let existing_value = U256::from(log.value.to_fixed_bytes());
+                    // NOTE: We're explicitly allowing over-/underflow as per the spec.
+                    match value {
+                        PackingType::Add(v) => existing_value.overflowing_add(v).0,
+                        PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
+                        _ => unreachable!(),
+                    }
+                } else {
+                    panic!("no key found for version")
+                }
+            }
+        };
+
+        let mut buffer = [0; 32];
+        processed_value.to_big_endian(&mut buffer);
+        H256::from(buffer)
+    }
+
     pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
@@ -82,7 +104,7 @@ impl SnapshotDB {
                     idx_bytes[7],
                 ])
             } else {
-                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(1))?;
+                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(0))?;
                 0
             },
         )
@@ -105,7 +127,7 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
-    pub fn insert_storage_log(&self, storage_log_entry: &mut SnapshotStorageLog) -> Result<()> {
+    pub fn insert_storage_log(&mut self, storage_log_entry: &mut SnapshotStorageLog) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
@@ -127,16 +149,19 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
+    pub fn get_key_from_index(&self, key_idx: u64) -> Result<Vec<u8>> {
+        let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
+        match self.get_cf(index_to_key_map, key_idx.to_be_bytes())? {
+            Some(k) => Ok(k),
+            None => Err(DatabaseError::NoSuchKey.into()),
+        }
+    }
+
     pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
         let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
-
-        let key: Vec<u8> = match self.get_cf(index_to_key_map, key_idx.to_be_bytes())? {
-            Some(k) => k,
-            None => return Err(DatabaseError::NoSuchKey.into()),
-        };
+        let key = self.get_key_from_index(key_idx)?;
 
         // XXX: These should really be inside a transaction...
         let entry_bs = self.get_cf(storage_logs, &key)?.unwrap();

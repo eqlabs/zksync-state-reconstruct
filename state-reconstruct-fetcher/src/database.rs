@@ -1,4 +1,4 @@
-use std::{convert::Into, ops::Deref, path::PathBuf};
+use std::{ops::Deref, path::PathBuf};
 
 use ethers::types::{U256, U64};
 use eyre::Result;
@@ -36,6 +36,7 @@ impl InnerDB {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
+        db_opts.set_max_open_files(1024);
 
         let db = DB::open_cf(
             &db_opts,
@@ -107,7 +108,7 @@ impl InnerDB {
         }
     }
 
-    pub fn add_key(&self, key: &U256) -> Result<()> {
+    pub fn add_key(&mut self, key: &U256) -> Result<()> {
         let mut key_bytes: [u8; 32] = [0; 32];
         key.to_big_endian(&mut key_bytes);
 

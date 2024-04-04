@@ -47,12 +47,18 @@ impl L1Metrics {
             return;
         }
 
-        let progress = {
-            let total = self.last_l1_block - self.initial_l1_block;
-            let cur = self.latest_l1_block_num - self.initial_l1_block;
-            // If polling past `last_l1_block`, stop at 100%.
-            let perc = std::cmp::min((cur * 100) / total, 100);
-            format!("{perc:>2}%")
+        let progress = if let Some(total) = self.last_l1_block.checked_sub(self.initial_l1_block) {
+            if total > 0 {
+                let cur = self.latest_l1_block_num - self.initial_l1_block;
+                // If polling past `last_l1_block`, stop at 100%.
+                let perc = std::cmp::min((cur * 100) / total, 100);
+                format!("{perc:>2}%")
+            } else {
+                " 0 ".to_string()
+            }
+        } else {
+            // End block not initialized yet.
+            " - ".to_string()
         };
 
         tracing::info!(
@@ -61,7 +67,8 @@ impl L1Metrics {
             self.latest_l1_block_num,
             self.latest_l2_block_num,
             self.latest_l1_block_num - self.first_l1_block_num,
-            self.latest_l2_block_num - self.first_l2_block_num
+            self.latest_l2_block_num
+                .saturating_sub(self.first_l2_block_num)
         );
 
         let log_acquisition = self.log_acquisition.reset();

@@ -6,10 +6,16 @@ pub mod ethereum {
     pub const GENESIS_BLOCK: u64 = 16_627_460;
 
     /// Block number in Ethereum of the first Boojum-formatted block.
-    pub const BOOJUM_BLOCK: u64 = 18_711_784;
+    pub const BOOJUM_BLOCK: u64 = 18_715_403;
+
+    /// Block number in Ethereum of the first block storing pubdata within blobs.
+    pub const BLOB_BLOCK: u64 = 19_412_473;
 
     /// zkSync smart contract address.
     pub const ZK_SYNC_ADDR: &str = "0x32400084C286CF3E17e7B677ea9583e60a000324";
+
+    /// Default Ethereum blob storage URL base.
+    pub const BLOBS_URL: &str = "https://api.blobscan.com/blobs/";
 }
 
 pub mod storage {
@@ -30,4 +36,8 @@ pub mod zksync {
     pub const OPERATION_BITMASK: u8 = 7;
     // The number of bits shifting the compressed state diff metadata by which we retrieve its length.
     pub const LENGTH_BITS_OFFSET: u8 = 3;
+    // Size of `CommitBatchInfo.pubdataCommitments` item.
+    pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
+    // The number of trailing bytes to ignore when using calldata post-blobs. Contains unused blob commitments.
+    pub const CALLDATA_SOURCE_TAIL_SIZE: usize = 32;
 }

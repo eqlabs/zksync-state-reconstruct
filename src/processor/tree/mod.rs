@@ -1,5 +1,5 @@
 pub mod query_tree;
-mod tree_wrapper;
+pub mod tree_wrapper;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -80,7 +80,11 @@ impl Processor for TreeProcessor {
             }
 
             let mut before = Instant::now();
-            self.tree.insert_block(&block).await;
+            if self.tree.insert_block(&block).await.is_err() {
+                tracing::warn!("Shutting down tree processor...");
+                return;
+            }
+
             insert_metric.add(before.elapsed());
 
             // Update snapshot values.

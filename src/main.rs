@@ -16,13 +16,12 @@ use std::{
 use clap::Parser;
 use cli::{Cli, Command, ReconstructSource};
 use eyre::Result;
-use processor::snapshot::{SnapshotBuilder, SnapshotExporter};
-use state_reconstruct_fetcher::{
-    constants::storage,
-    l1_fetcher::{L1Fetcher, L1FetcherOptions},
-    types::CommitBlock,
+use processor::snapshot::{
+    exporter::SnapshotExporter, importer::SnapshotImporter, SnapshotBuilder,
 };
 use syslog_tracing::Syslog;
+use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
+use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{filter::LevelFilter, prelude::*, registry::Registry, EnvFilter};
 
@@ -34,6 +33,9 @@ use crate::{
     },
     util::json,
 };
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 fn start_logger(default_level: LevelFilter, with_syslog: bool) {
     let filter = match EnvFilter::try_from_default_env() {
@@ -71,22 +73,26 @@ async fn main() -> Result<()> {
     start_logger(LevelFilter::INFO, cli.with_syslog);
 
     match cli.subcommand {
-        Command::Reconstruct { source, db_path } => {
+        Command::Reconstruct {
+            source,
+            db_path,
+            snapshot,
+        } => {
             let db_path = match db_path {
                 Some(path) => PathBuf::from(path),
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
 
+            if let Some(directory) = snapshot {
+                tracing::info!("Trying to restore state from snapshot...");
+                let importer =
+                    SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
+                importer.run().await?;
+            }
+
             match source {
                 ReconstructSource::L1 { l1_fetcher_options } => {
-                    let fetcher_options = L1FetcherOptions {
-                        http_url: l1_fetcher_options.http_url,
-                        start_block: l1_fetcher_options.start_block,
-                        block_step: l1_fetcher_options.block_step,
-                        block_count: l1_fetcher_options.block_count,
-                        disable_polling: l1_fetcher_options.disable_polling,
-                    };
-
+                    let fetcher_options = l1_fetcher_options.into();
                     let processor = TreeProcessor::new(db_path.clone()).await?;
                     let fetcher = L1Fetcher::new(fetcher_options, Some(processor.get_snapshot()))?;
                     let (tx, rx) = mpsc::channel::<CommitBlock>(5);
@@ -122,14 +128,7 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             file,
         } => {
-            let fetcher_options = L1FetcherOptions {
-                http_url: l1_fetcher_options.http_url,
-                start_block: l1_fetcher_options.start_block,
-                block_step: l1_fetcher_options.block_step,
-                block_count: l1_fetcher_options.block_count,
-                disable_polling: l1_fetcher_options.disable_polling,
-            };
-
+            let fetcher_options = l1_fetcher_options.into();
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = JsonSerializationProcessor::new(Path::new(&file))?;
             let (tx, rx) = mpsc::channel::<CommitBlock>(5);
@@ -153,7 +152,7 @@ async fn main() -> Result<()> {
                 None => env::current_dir()?.join(storage::DEFAULT_DB_NAME),
             };
 
-            let tree = QueryTree::new(&db_path);
+            let tree = QueryTree::new(&db_path)?;
             let result = tree.query(&query);
 
             if json {
@@ -166,14 +165,7 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             db_path,
         } => {
-            let fetcher_options = L1FetcherOptions {
-                http_url: l1_fetcher_options.http_url,
-                start_block: l1_fetcher_options.start_block,
-                block_step: l1_fetcher_options.block_step,
-                block_count: l1_fetcher_options.block_count,
-                disable_polling: l1_fetcher_options.disable_polling,
-            };
-
+            let fetcher_options = l1_fetcher_options.into();
             let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = SnapshotBuilder::new(db_path);
 
@@ -192,8 +184,10 @@ async fn main() -> Result<()> {
         } => {
             let export_path = Path::new(&directory);
             std::fs::create_dir_all(export_path)?;
-            let exporter = SnapshotExporter::new(export_path, db_path);
+            let exporter = SnapshotExporter::new(export_path, db_path)?;
             exporter.export_snapshot(chunk_size)?;
+
+            tracing::info!("Succesfully exported snapshot files to \"{directory}\"!");
         }
     }
 

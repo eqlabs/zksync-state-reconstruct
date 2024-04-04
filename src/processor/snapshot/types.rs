@@ -1,5 +1,3 @@
-// FIXME:
-#![allow(dead_code)]
 use std::fmt;
 
 use chrono::{offset::Utc, DateTime};
@@ -34,13 +32,13 @@ pub struct SnapshotStorageLogsChunkMetadata {
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageKey {
     pub l1_batch_number: L1BatchNumber,
-    /// Chunks with smaller id's must contain storage_logs with smaller hashed_keys
+    /// Chunks with smaller id's must contain `storage_logs` with smaller `hashed_keys`
     pub chunk_id: u64,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotChunk {
-    // Sorted by hashed_keys interpreted as little-endian numbers
+    // Sorted by `hashed_keys` interpreted as little-endian numbers
     pub storage_logs: Vec<SnapshotStorageLog>,
     pub factory_deps: Vec<SnapshotFactoryDependency>,
 }

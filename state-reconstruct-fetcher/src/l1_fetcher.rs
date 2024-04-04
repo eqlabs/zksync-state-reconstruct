@@ -1,9 +1,9 @@
-use std::{fs::File, future::Future, ops::Fn, sync::Arc};
+use std::{cmp, fs::File, future::Future, sync::Arc};
 
+use blobscan_client::{BlobSupport, ScrapingSupport};
 use ethers::{
     abi::{Contract, Function},
     prelude::*,
-    providers::Provider,
 };
 use eyre::Result;
 use rand::random;
@@ -15,7 +15,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    constants::ethereum::{BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    api_support::ApiSupport,
+    blob_http_client::BlobHttpClient,
+    constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     database::InnerDB,
     metrics::L1Metrics,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
@@ -38,15 +40,18 @@ pub enum L1FetchError {
 
     #[error("get tx failed")]
     GetTx,
+
+    #[error("get end block number failed")]
+    GetEndBlockNumber,
 }
 
 pub struct L1FetcherOptions {
     /// The Ethereum JSON-RPC HTTP URL to use.
     pub http_url: String,
+    /// The Ethereum blob storage URL base.
+    pub blobs_url: String,
     /// Ethereum block number to start state import from.
     pub start_block: u64,
-    /// The number of blocks to filter & process in one step over.
-    pub block_step: u64,
     /// The number of blocks to process from Ethereum.
     pub block_count: Option<u64>,
     /// If present, don't poll for new blocks after reaching the end.
@@ -96,8 +101,8 @@ impl L1Fetcher {
         // use of the snapshot value.
         if current_l1_block_number == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.snapshot {
-                let snapshot = snapshot.lock().await;
-                let snapshot_latest_l1_block_number = snapshot.get_latest_l1_block_number()?;
+                let snapshot_latest_l1_block_number =
+                    snapshot.lock().await.get_latest_l1_block_number()?;
                 if snapshot_latest_l1_block_number > current_l1_block_number {
                     current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
@@ -112,22 +117,9 @@ impl L1Fetcher {
             .block_count
             .map(|count| U64::from(self.config.start_block + count));
 
-        let end_block_number = if let Some(eb) = end_block {
-            eb
-        } else {
-            self.provider
-                .get_block(BlockNumber::Latest)
-                .await
-                .expect("block acquisition error")
-                .expect("no latest block")
-                .number
-                .expect("block pending")
-        };
-
         // Initialize metrics with last state, if it exists.
         {
             let mut metrics = self.metrics.lock().await;
-            metrics.last_l1_block = end_block_number.as_u64();
             metrics.initial_l1_block = self.config.start_block;
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
@@ -151,8 +143,15 @@ impl L1Fetcher {
         let token = CancellationToken::new();
         let cloned_token = token.clone();
         tokio::spawn(async move {
-            let _ = tokio::signal::ctrl_c().await;
-            tracing::info!("Shutdown signal received, finishing up and shutting down...");
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {
+                    tracing::info!("Shutdown signal received, finishing up and shutting down...");
+                }
+                Err(err) => {
+                    tracing::error!("Shutdown signal failed: {err}");
+                }
+            };
+
             cloned_token.cancel();
         });
 
@@ -175,18 +174,18 @@ impl L1Fetcher {
             token.clone(),
             current_l1_block_number.as_u64(),
         );
-        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink)?;
+        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink, token.clone())?;
         let main_handle = self.spawn_main_handler(
             hash_tx,
             token,
             current_l1_block_number,
-            end_block_number,
+            end_block,
             disable_polling,
         )?;
 
         tx_handle.await?;
         let last_processed_l1_block_num = parse_handle.await?;
-        let last_fetched_l1_block_num = main_handle.await?;
+        let mut last_fetched_l1_block_num = main_handle.await?;
 
         // Store our current L1 block number so we can resume from where we left
         // off, we also make sure to update the metrics before printing them.
@@ -197,10 +196,24 @@ impl L1Fetcher {
                     .await
                     .set_latest_l1_block_number(block_num)?;
             }
+
+            // Fetching is naturally ahead of parsing, but the data
+            // that wasn't parsed on program interruption/error is
+            // now lost and will have to be fetched again...
+            if last_fetched_l1_block_num > block_num {
+                tracing::debug!(
+                    "L1 Blocks fetched but not parsed: {}",
+                    last_fetched_l1_block_num - block_num
+                );
+                last_fetched_l1_block_num = block_num;
+            }
+
+            let mut metrics = self.metrics.lock().await;
+            metrics.latest_l1_block_num = last_fetched_l1_block_num;
+            metrics.print();
+        } else {
+            tracing::warn!("No new blocks were processed");
         }
-        let mut metrics = self.metrics.lock().await;
-        metrics.latest_l1_block_num = last_fetched_l1_block_num;
-        metrics.print();
 
         Ok(())
     }
@@ -210,7 +223,7 @@ impl L1Fetcher {
         hash_tx: mpsc::Sender<H256>,
         cancellation_token: CancellationToken,
         mut current_l1_block_number: U64,
-        end_block_number: U64,
+        max_end_block: Option<U64>,
         disable_polling: bool,
     ) -> Result<tokio::task::JoinHandle<u64>> {
         let metrics = self.metrics.clone();
@@ -220,23 +233,69 @@ impl L1Fetcher {
         Ok(tokio::spawn({
             async move {
                 let mut latest_l2_block_number = U256::zero();
-
+                let mut previous_hash = None;
+                let mut end_block = None;
                 loop {
-                    // Break when reaching the `end_block` or on the receivement of a `ctrl_c` signal.
-                    if (disable_polling && current_l1_block_number > end_block_number)
-                        || cancellation_token.is_cancelled()
-                    {
-                        tracing::debug!("Shutting down main handle...");
+                    // Break on the receivement of a `ctrl_c` signal.
+                    if cancellation_token.is_cancelled() {
+                        tracing::debug!("Shutting down main handler...");
                         break;
+                    }
+
+                    let Some(end_block_number) = end_block else {
+                        if let Ok(new_end) = L1Fetcher::retry_call(
+                            || provider_clone.get_block(BlockNumber::Finalized),
+                            L1FetchError::GetEndBlockNumber,
+                        )
+                        .await
+                        {
+                            if let Some(found_block) = new_end {
+                                if let Some(ebn) = found_block.number {
+                                    let end_block_number =
+                                        if let Some(end_block_limit) = max_end_block {
+                                            if end_block_limit < ebn {
+                                                end_block_limit
+                                            } else {
+                                                ebn
+                                            }
+                                        } else {
+                                            ebn
+                                        };
+                                    end_block = Some(end_block_number);
+                                    metrics.lock().await.last_l1_block = end_block_number.as_u64();
+                                }
+                            }
+                        } else {
+                            tracing::debug!("Cannot get latest block number...");
+                            tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                        }
+
+                        continue;
+                    };
+
+                    if current_l1_block_number > end_block_number {
+                        // Any place in this function that increases `current_l1_block_number`
+                        // beyond end_block_number must check the `disabled_polling`
+                        // case first.
+                        // For external callers, this function must not be called w/
+                        // `current_l1_block_number > end_block_number`.
+                        assert!(!disable_polling);
+                        tracing::debug!("Waiting for upstream to move on...");
+                        tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                        end_block = None;
+                        continue;
                     }
 
                     // Create a filter showing only `BlockCommit`s from the [`ZK_SYNC_ADDR`].
                     // TODO: Filter by executed blocks too.
+                    // Don't go beyond `end_block_number` - tip of the chain might still change.
+                    let filter_end_block_number =
+                        cmp::min(current_l1_block_number + BLOCK_STEP - 1, end_block_number);
                     let filter = Filter::new()
                         .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
                         .topic0(event.signature())
                         .from_block(current_l1_block_number)
-                        .to_block(current_l1_block_number + BLOCK_STEP);
+                        .to_block(filter_end_block_number);
 
                     // Grab all relevant logs.
                     let before = Instant::now();
@@ -262,15 +321,28 @@ impl L1Fetcher {
                             }
 
                             if let Some(tx_hash) = log.transaction_hash {
-                                if let Err(e) = hash_tx.send(tx_hash).await {
-                                    if cancellation_token.is_cancelled() {
-                                        tracing::debug!("Shutting down tx sender...");
-                                        break;
-                                    } else {
-                                        tracing::error!("Cannot send tx hash: {e}");
+                                if let Some(prev_hash) = previous_hash {
+                                    if prev_hash == tx_hash {
+                                        tracing::debug!(
+                                            "Transaction hash {:?} already known - not sending.",
+                                            tx_hash
+                                        );
                                         continue;
                                     }
                                 }
+
+                                if let Err(e) = hash_tx.send(tx_hash).await {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down tx sender...");
+                                    } else {
+                                        tracing::error!("Cannot send tx hash: {e}");
+                                        cancellation_token.cancel();
+                                    }
+
+                                    return current_l1_block_number.as_u64();
+                                }
+
+                                previous_hash = Some(tx_hash);
                             }
 
                             latest_l2_block_number = new_l2_block_number;
@@ -282,8 +354,31 @@ impl L1Fetcher {
 
                     metrics.lock().await.latest_l1_block_num = current_l1_block_number.as_u64();
 
-                    // Increment current block index.
-                    current_l1_block_number += BLOCK_STEP.into();
+                    let next_l1_block_number = current_l1_block_number + U64::from(BLOCK_STEP);
+                    if next_l1_block_number > end_block_number {
+                        // Some of the `BLOCK_STEP` blocks asked for in this iteration
+                        // probably didn't exist yet, so we set `current_l1_block_number`
+                        // appropriately as to not skip them.
+                        if current_l1_block_number < end_block_number {
+                            current_l1_block_number = end_block_number;
+                        } else {
+                            // `current_l1_block_number == end_block_number`,
+                            // IOW, no more blocks can be retrieved until new ones
+                            // have been published on L1.
+                            if disable_polling {
+                                tracing::debug!("Fetching finished...");
+                                return current_l1_block_number.as_u64();
+                            }
+
+                            current_l1_block_number = end_block_number + U64::one();
+                            // `current_l1_block_number > end_block_number`,
+                            // IOW, end block will be reset in the next
+                            // iteration & updated afterwards.
+                        }
+                    } else {
+                        // We haven't reached past `end_block` yet, stepping by [`BLOCK_STEP`].
+                        current_l1_block_number = next_l1_block_number;
+                    }
                 }
 
                 current_l1_block_number.as_u64()
@@ -320,12 +415,12 @@ impl L1Fetcher {
                             _ => {
                                 // Task has been cancelled by user, abort loop.
                                 if cancellation_token.is_cancelled() {
-                                    tracing::debug!("Shutting down tx handle...");
+                                    tracing::debug!("Shutting down tx handler...");
                                     return;
                                 }
 
                                 tracing::error!(
-                                    "failed to get transaction for hash: {}, retrying in a bit...",
+                                    "Failed to get transaction for hash: {}, retrying in a bit...",
                                     hash
                                 );
                                 tokio::time::sleep(Duration::from_secs(
@@ -362,42 +457,79 @@ impl L1Fetcher {
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlock>,
+        cancellation_token: CancellationToken,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
+        let client = BlobHttpClient::new(make_support(self.config.blobs_url.clone()))?;
         Ok(tokio::spawn({
             async move {
+                let mut boojum_mode = false;
                 let mut function =
                     contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
+                    if cancellation_token.is_cancelled() {
+                        tracing::debug!("Shutting down parsing handler...");
+                        return last_block_number_processed;
+                    }
+
                     let before = Instant::now();
-                    let block_number = tx.block_number.map(|v| v.as_u64());
-
-                    if let Some(block_number) = block_number {
-                        if block_number >= BOOJUM_BLOCK {
-                            function =
-                                contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
-                            tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
-                        }
+                    let Some(block_number) = tx.block_number else {
+                        tracing::error!("transaction has no block number");
+                        break;
                     };
+                    let block_number = block_number.as_u64();
 
-                    let blocks = match parse_calldata(block_number, &function, &tx.input).await {
-                        Ok(blks) => blks,
-                        Err(e) => {
-                            tracing::error!("failed to parse calldata: {e}");
-                            continue;
+                    if !boojum_mode && block_number >= BOOJUM_BLOCK {
+                        tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
+                        boojum_mode = true;
+                        function =
+                            contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
+                    }
+
+                    let blocks = loop {
+                        match parse_calldata(block_number, &function, &tx.input, &client).await {
+                            Ok(blks) => break blks,
+                            Err(e) => match e {
+                                ParseError::BlobStorageError(_) => {
+                                    if cancellation_token.is_cancelled() {
+                                        tracing::debug!("Shutting down parsing...");
+                                        return last_block_number_processed;
+                                    }
+                                    sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                                }
+                                ParseError::BlobFormatError(inner) => {
+                                    tracing::error!("Cannot parse {}: {}", inner.0, inner.1);
+                                    cancellation_token.cancel();
+                                    return last_block_number_processed;
+                                }
+                                _ => {
+                                    tracing::error!("Failed to parse calldata: {e}");
+                                    cancellation_token.cancel();
+                                    return last_block_number_processed;
+                                }
+                            },
                         }
                     };
 
                     let mut metrics = metrics.lock().await;
                     for blk in blocks {
                         metrics.latest_l2_block_num = blk.l2_block_number;
-                        sink.send(blk).await.unwrap();
+                        if let Err(e) = sink.send(blk).await {
+                            if cancellation_token.is_cancelled() {
+                                tracing::debug!("Shutting down parsing task...");
+                            } else {
+                                tracing::error!("Cannot send block: {e}");
+                                cancellation_token.cancel();
+                            }
+
+                            return last_block_number_processed;
+                        }
                     }
 
-                    last_block_number_processed = block_number;
+                    last_block_number_processed = Some(block_number);
                     let duration = before.elapsed();
                     metrics.parsing.add(duration);
                 }
@@ -425,11 +557,20 @@ impl L1Fetcher {
     }
 }
 
+fn make_support(url: String) -> Box<dyn BlobSupport + Send + Sync> {
+    if url.starts_with("https://blobscan.com") {
+        Box::<ScrapingSupport>::default()
+    } else {
+        Box::new(ApiSupport::new(url))
+    }
+}
+
 pub async fn parse_calldata(
-    l1_block_number: Option<u64>,
+    l1_block_number: u64,
     commit_blocks_fn: &Function,
     calldata: &[u8],
-) -> Result<Vec<CommitBlock>> {
+    client: &BlobHttpClient,
+) -> Result<Vec<CommitBlock>, ParseError> {
     let mut parsed_input = commit_blocks_fn
         .decode_input(&calldata[4..])
         .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
@@ -438,8 +579,7 @@ pub async fn parse_calldata(
         return Err(ParseError::InvalidCalldata(format!(
             "invalid number of parameters (got {}, expected 2) for commitBlocks function",
             parsed_input.len()
-        ))
-        .into());
+        )));
     }
 
     let new_blocks_data = parsed_input
@@ -450,61 +590,54 @@ pub async fn parse_calldata(
         .ok_or_else(|| ParseError::InvalidCalldata("stored block info".to_string()))?;
 
     let abi::Token::Tuple(stored_block_info) = stored_block_info else {
-        return Err(ParseError::InvalidCalldata("invalid StoredBlockInfo".to_string()).into());
+        return Err(ParseError::InvalidCalldata(
+            "invalid StoredBlockInfo".to_string(),
+        ));
     };
 
     let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
             "cannot parse previous L2 block number".to_string(),
-        )
-        .into());
+        ));
     };
 
     let abi::Token::Uint(_previous_enumeration_index) = stored_block_info[2].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
             "cannot parse previous enumeration index".to_string(),
-        )
-        .into());
+        ));
     };
 
-    //let previous_enumeration_index = previous_enumeration_index.0[0];
-    // TODO: What to do here?
-    // assert_eq!(previous_enumeration_index, tree.next_enumeration_index());
-
+    // Parse blocks using [`CommitBlockInfoV1`] or [`CommitBlockInfoV2`]
+    let mut block_infos =
+        parse_commit_block_info(&new_blocks_data, l1_block_number, client).await?;
     // Supplement every `CommitBlock` element with L1 block number information.
-    parse_commit_block_info(&new_blocks_data, l1_block_number)
-        .await
-        .map(|mut vec| {
-            vec.iter_mut()
-                .for_each(|e| e.l1_block_number = l1_block_number);
-            vec
-        })
+    block_infos
+        .iter_mut()
+        .for_each(|e| e.l1_block_number = Some(l1_block_number));
+    Ok(block_infos)
 }
 
 async fn parse_commit_block_info(
     data: &abi::Token,
-    l1_block_number: Option<u64>,
-) -> Result<Vec<CommitBlock>> {
-    // By default parse blocks using [`CommitBlockInfoV1`]; if we have reached [`BOOJUM_BLOCK`], use [`CommitBlockInfoV2`].
-    let use_new_format = if let Some(block_number) = l1_block_number {
-        block_number >= BOOJUM_BLOCK
-    } else {
-        false
-    };
-
+    l1_block_number: u64,
+    client: &BlobHttpClient,
+) -> Result<Vec<CommitBlock>, ParseError> {
     let abi::Token::Array(data) = data else {
         return Err(ParseError::InvalidCommitBlockInfo(
             "cannot convert newBlocksData to array".to_string(),
-        )
-        .into());
+        ));
     };
 
     let mut result = vec![];
     for d in data {
-        let commit_block = if use_new_format {
-            CommitBlock::try_from_token::<V2>(d)?
-        } else {
-            CommitBlock::try_from_token::<V1>(d)?
+        let commit_block = {
+            if l1_block_number >= BLOB_BLOCK {
+                CommitBlock::try_from_token_resolve(d, client).await?
+            } else if l1_block_number >= BOOJUM_BLOCK {
+                CommitBlock::try_from_token::<V2>(d)?
+            } else {
+                CommitBlock::try_from_token::<V1>(d)?
+            }
         };
 
         result.push(commit_block);

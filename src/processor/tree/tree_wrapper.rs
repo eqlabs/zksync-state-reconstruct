@@ -1,17 +1,30 @@
-use std::{fs, path::Path, str::FromStr, sync::Arc};
+use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, sync::Arc};
 
 use blake2::{Blake2s256, Digest};
-use ethers::types::{Address, H256, U256};
+use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::storage::INITAL_STATE_PATH, database::InnerDB, types::CommitBlock,
+    constants::storage::INITAL_STATE_PATH,
+    database::InnerDB,
+    types::{CommitBlock, PackingType},
 };
+use thiserror::Error;
 use tokio::sync::Mutex;
-use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper};
+use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
+use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
+use crate::processor::snapshot::exporter::protobuf::SnapshotStorageLogsChunk;
+
+#[derive(Error, Debug)]
+pub enum TreeError {
+    #[error("block mismatch")]
+    BlockMismatch,
+}
 
 pub struct TreeWrapper {
+    index_to_key: HashMap<u64, U256>,
+    key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
     snapshot: Arc<Mutex<InnerDB>>,
 }
@@ -23,7 +36,11 @@ impl TreeWrapper {
         snapshot: Arc<Mutex<InnerDB>>,
         reconstruct: bool,
     ) -> Result<Self> {
-        let db = RocksDBWrapper::new(db_path);
+        let db_opt = RocksDBOptions {
+            max_open_files: NonZeroU32::new(2048),
+            ..Default::default()
+        };
+        let db = RocksDBWrapper::from(RocksDB::with_options(db_path, db_opt)?);
         let mut tree = MerkleTree::new(db);
 
         if reconstruct {
@@ -31,49 +48,157 @@ impl TreeWrapper {
             reconstruct_genesis_state(&mut tree, &mut guard, INITAL_STATE_PATH)?;
         }
 
-        Ok(Self { tree, snapshot })
+        Ok(Self {
+            index_to_key: HashMap::new(),
+            key_to_value: HashMap::new(),
+            tree,
+            snapshot,
+        })
     }
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
-    pub async fn insert_block(&mut self, block: &CommitBlock) -> RootHash {
+    pub async fn insert_block(&mut self, block: &CommitBlock) -> Result<RootHash> {
+        self.clear_known_base();
+        let mut tree_entries = Vec::with_capacity(block.initial_storage_changes.len());
         // INITIAL CALLDATA.
-        let mut key_value_pairs: Vec<(U256, H256)> =
-            Vec::with_capacity(block.initial_storage_changes.len());
+        let mut index =
+            block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
         for (key, value) in &block.initial_storage_changes {
             let key = U256::from_little_endian(key);
-            let value = H256::from(value);
+            self.insert_known_key(index, key);
+            let value = self.process_value(key, *value);
 
-            key_value_pairs.push((key, value));
+            tree_entries.push(TreeEntry::new(key, index, value));
             self.snapshot
                 .lock()
                 .await
                 .add_key(&key)
                 .expect("cannot add key");
+            index += 1;
         }
 
         // REPEATED CALLDATA.
         for (index, value) in &block.repeated_storage_changes {
             let index = *index;
             // Index is 1-based so we subtract 1.
-            let key = self.snapshot.lock().await.get_key(index - 1).unwrap();
-            let value = H256::from(value);
+            let key = self
+                .snapshot
+                .lock()
+                .await
+                .get_key(index - 1)
+                .expect("invalid key index");
+            self.insert_known_key(index, key);
+            let value = self.process_value(key, *value);
 
-            key_value_pairs.push((key, value));
+            tree_entries.push(TreeEntry::new(key, index, value));
         }
 
-        let output = self.tree.extend(key_value_pairs);
+        let output = self.tree.extend(tree_entries);
         let root_hash = output.root_hash;
 
-        assert_eq!(root_hash.as_bytes(), block.new_state_root);
         tracing::debug!(
             "Root hash of block {} = {}",
             block.l2_block_number,
             hex::encode(root_hash)
         );
 
-        tracing::debug!("Successfully processed block {}", block.l2_block_number);
+        let root_hash_bytes = root_hash.as_bytes();
+        if root_hash_bytes == block.new_state_root {
+            tracing::debug!("Successfully processed block {}", block.l2_block_number);
 
-        root_hash
+            Ok(root_hash)
+        } else {
+            tracing::error!(
+                "Root hash mismatch!\nLocal: {}\nPublished: {}",
+                hex::encode(root_hash_bytes),
+                hex::encode(&block.new_state_root)
+            );
+            let mut rollback_entries = Vec::with_capacity(self.index_to_key.len());
+            for (index, key) in &self.index_to_key {
+                let value = self.key_to_value.get(key).unwrap();
+                rollback_entries.push(TreeEntry::new(*key, *index, *value));
+            }
+
+            self.tree.extend(rollback_entries);
+            Err(TreeError::BlockMismatch.into())
+        }
+    }
+
+    pub async fn restore_from_snapshot(
+        &mut self,
+        chunks: Vec<SnapshotStorageLogsChunk>,
+        l1_batch_number: U64,
+    ) -> Result<()> {
+        let mut tree_entries = Vec::new();
+
+        for chunk in &chunks {
+            for log in &chunk.storage_logs {
+                let key = U256::from_big_endian(log.storage_key());
+                let index = log.enumeration_index();
+
+                let value_bytes: [u8; 32] = log.storage_value().try_into()?;
+                let value = H256::from(&value_bytes);
+
+                tree_entries.push(TreeEntry::new(key, index, value));
+                self.snapshot
+                    .lock()
+                    .await
+                    .add_key(&key)
+                    .expect("cannot add key");
+            }
+        }
+
+        let num_tree_entries = tree_entries.len();
+        self.tree.extend(tree_entries);
+
+        tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
+
+        let snapshot = self.snapshot.lock().await;
+        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64())?;
+
+        Ok(())
+    }
+
+    fn process_value(&mut self, key: U256, value: PackingType) -> H256 {
+        let version = self.tree.latest_version().unwrap_or_default();
+        if let Ok(leaf) = self.tree.entries(version, &[key]) {
+            let hash = leaf.last().unwrap().value;
+            self.insert_known_value(key, hash);
+            let existing_value = U256::from(hash.to_fixed_bytes());
+            // NOTE: We're explicitly allowing over-/underflow as per the spec.
+            let processed_value = match value {
+                PackingType::NoCompression(v) | PackingType::Transform(v) => v,
+                PackingType::Add(v) => existing_value.overflowing_add(v).0,
+                PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
+            };
+            let mut buffer = [0; 32];
+            processed_value.to_big_endian(&mut buffer);
+            H256::from(buffer)
+        } else {
+            panic!("no key found for version")
+        }
+    }
+
+    fn clear_known_base(&mut self) {
+        self.index_to_key.clear();
+        self.key_to_value.clear();
+    }
+
+    fn insert_known_key(&mut self, index: u64, key: U256) {
+        if let Some(old_key) = self.index_to_key.insert(index, key) {
+            assert_eq!(old_key, key);
+        }
+    }
+
+    fn insert_known_value(&mut self, key: U256, value: H256) {
+        if let Some(old_value) = self.key_to_value.insert(key, value) {
+            tracing::debug!(
+                "Updated value at {:?} from {:?} to {:?}",
+                key,
+                old_value,
+                value
+            );
+        }
     }
 }
 
@@ -154,29 +279,21 @@ fn reconstruct_genesis_state<D: Database>(
 
     tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
-    let mut key_value_pairs: Vec<(U256, H256)> = Vec::with_capacity(batched.len());
+    let mut tree_entries = Vec::with_capacity(batched.len());
+    let mut index = 1;
     for (address, key, value) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
-        // TODO: what to do here?
-        // let version = tree.latest_version().unwrap_or_default();
-        // let _leaf = tree.read_leaves(version, &[key]);
-
-        // let existing_value = U256::from_big_endian(existing_leaf.leaf.value());
-        // if existing_value == value {
-        //     // we downgrade to read
-        //     // println!("Downgrading to read")
-        // } else {
-        // we write
         let mut tmp = [0u8; 32];
         value.to_big_endian(&mut tmp);
 
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
-        key_value_pairs.push((key, value));
+        tree_entries.push(TreeEntry::new(key, index, value));
         snapshot.add_key(&key).expect("cannot add genesis key");
+        index += 1;
     }
 
-    let output = tree.extend(key_value_pairs);
+    let output = tree.extend(tree_entries);
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())

@@ -43,9 +43,7 @@ impl CommitBlockFormat for V1 {
 impl TryFrom<&abi::Token> for V1 {
     type Error = ParseError;
 
-    /// Try to parse Ethereum ABI token into [`CommitBlockInfo`].
-    ///
-    /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
+    /// Try to parse Ethereum ABI token into [`V1`].
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
             new_l2_block_number,
@@ -101,15 +99,15 @@ impl TryFrom<&abi::Token> for V1 {
         for initial_calldata in initial_changes_calldata[4..].chunks(64) {
             let mut t = initial_calldata.array_chunks::<32>();
             let key = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
+                ParseError::InvalidCommitBlockInfo("initialStorageChangesKey".to_string())
             })?;
             let value = *t.next().ok_or_else(|| {
-                ParseError::InvalidCommitBlockInfo("initialStorageChanges".to_string())
+                ParseError::InvalidCommitBlockInfo("initialStorageChangesValue".to_string())
             })?;
 
             if t.next().is_some() {
                 return Err(ParseError::InvalidCommitBlockInfo(
-                    "initialStorageChanges".to_string(),
+                    "initialStorageChangesMulti".to_string(),
                 ));
             }
 
@@ -175,13 +173,6 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             ));
         };
 
-        /* TODO(tuommaki): Fix the check below.
-        if new_l2_block_number <= latest_l2_block_number {
-            println!("skipping before we even get started");
-            continue;
-        }
-        */
-
         let abi::Token::Uint(timestamp) = block_elems[1].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo("timestamp".to_string()));
         };
@@ -218,13 +209,13 @@ impl TryFrom<&abi::Token> for ExtractedToken {
 
         let abi::Token::Bytes(initial_changes_calldata) = block_elems[7].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
-                "initialStorageChanges".to_string(),
+                "initialStorageChangesParam".to_string(),
             ));
         };
 
         if initial_changes_calldata.len() % 64 != 4 {
             return Err(ParseError::InvalidCommitBlockInfo(
-                "initialStorageChanges".to_string(),
+                "initialStorageChangesLength".to_string(),
             ));
         }
         let abi::Token::Bytes(repeated_changes_calldata) = block_elems[8].clone() else {

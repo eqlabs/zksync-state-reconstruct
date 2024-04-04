@@ -3,7 +3,6 @@ use std::{fs::File, path::Path};
 use async_trait::async_trait;
 use eyre::Result;
 use serde::ser::{SerializeSeq, Serializer};
-use serde_json;
 use state_reconstruct_fetcher::types::CommitBlock;
 use tokio::sync::mpsc;
 
