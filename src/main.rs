@@ -7,6 +7,7 @@ mod util;
 
 use std::{
     env,
+    ffi::CStr,
     fs::File,
     io::BufReader,
     path::{Path, PathBuf},
@@ -18,10 +19,11 @@ use eyre::Result;
 use processor::snapshot::{
     exporter::SnapshotExporter, importer::SnapshotImporter, SnapshotBuilder,
 };
+use syslog_tracing::Syslog;
 use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
-use tracing_subscriber::{filter::LevelFilter, EnvFilter};
+use tracing_subscriber::{filter::LevelFilter, prelude::*, registry::Registry, EnvFilter};
 
 use crate::{
     processor::{
@@ -35,30 +37,40 @@ use crate::{
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-fn start_logger(default_level: LevelFilter) {
+fn start_logger(default_level: LevelFilter, with_syslog: bool) {
     let filter = match EnvFilter::try_from_default_env() {
-        Ok(filter) => filter
-            .add_directive("hyper=off".parse().unwrap())
-            .add_directive("ethers=off".parse().unwrap()),
-        _ => EnvFilter::default()
-            .add_directive(default_level.into())
-            .add_directive("hyper=off".parse().unwrap())
-            .add_directive("ethers=off".parse().unwrap())
-            .add_directive("zksync_storage=off".parse().unwrap()),
+        Ok(filter) => filter,
+        _ => EnvFilter::default().add_directive(default_level.into()),
     };
+    let filter = filter
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("ethers=off".parse().unwrap());
 
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .init();
+    let default_layer = tracing_subscriber::fmt::layer().with_target(false);
+
+    let subscriber = Registry::default().with(filter).with(default_layer);
+
+    if with_syslog {
+        let identity = CStr::from_bytes_with_nul(b"zksync-sr\0").unwrap();
+        let (options, facility) = Default::default();
+        let syslog = Syslog::new(identity, options, facility).unwrap();
+        let syslog_layer = tracing_subscriber::fmt::layer()
+            .with_target(false)
+            .with_ansi(false)
+            .without_time() // Syslog logs its own time.
+            .with_writer(syslog);
+
+        subscriber.with(syslog_layer).init();
+    } else {
+        subscriber.init();
+    }
 }
 
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
-    start_logger(LevelFilter::INFO);
-
     let cli = Cli::parse();
+    start_logger(LevelFilter::INFO, cli.with_syslog);
 
     match cli.subcommand {
         Command::Reconstruct {

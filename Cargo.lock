@@ -4460,6 +4460,7 @@ dependencies = [
  "serde",
  "serde_json",
  "state-reconstruct-fetcher",
+ "syslog-tracing",
  "thiserror",
  "tikv-jemallocator",
  "tokio",
@@ -4568,6 +4569,17 @@ name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2047c6ded9c721764247e62cd3b03c09ffc529b2ba5b10ec482ae507a4a70160"
+
+[[package]]
+name = "syslog-tracing"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f890b68f60eb7e87373b3b8f1f412d2a7d90460cd18294acbc0e90ba496193e"
+dependencies = [
+ "libc",
+ "tracing-core",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "system-configuration"

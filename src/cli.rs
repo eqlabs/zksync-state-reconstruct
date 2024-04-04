@@ -116,6 +116,9 @@ pub enum Command {
 #[derive(Parser)]
 #[command(author, version, about = "zkSync state reconstruction tool")]
 pub struct Cli {
+    #[arg(long, default_value_t = false)]
+    pub with_syslog: bool,
+
     #[command(subcommand)]
     pub subcommand: Command,
 }
