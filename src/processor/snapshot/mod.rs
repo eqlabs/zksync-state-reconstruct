@@ -69,7 +69,9 @@ impl Processor for SnapshotBuilder {
                 self.database
                     .insert_storage_log(&mut SnapshotStorageLog {
                         key: U256::from_little_endian(key),
-                        value: self.database.process_value(U256::from(key), *value),
+                        value: self
+                            .database
+                            .process_value(U256::from_little_endian(key), *value),
                         miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
                             block.l1_block_number.unwrap_or(0),
@@ -86,7 +88,9 @@ impl Processor for SnapshotBuilder {
                     .database
                     .get_key_from_index(index as u64)
                     .expect("missing key");
-                let value = self.database.process_value(U256::from(&key[0..32]), *value);
+                let value = self
+                    .database
+                    .process_value(U256::from_big_endian(&key[0..32]), *value);
 
                 if self
                     .database

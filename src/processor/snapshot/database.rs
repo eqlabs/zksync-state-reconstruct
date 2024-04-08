@@ -53,7 +53,7 @@ impl SnapshotDB {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let mut buffer = [0; 32];
-                key.to_little_endian(&mut buffer);
+                key.to_big_endian(&mut buffer);
                 if let Ok(Some(log)) = self.get_storage_log(&buffer) {
                     let existing_value = U256::from(log.value.to_fixed_bytes());
                     // NOTE: We're explicitly allowing over-/underflow as per the spec.
