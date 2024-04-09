@@ -157,7 +157,6 @@ impl SnapshotExporter {
                         };
 
                         chunk.storage_logs.push(pb);
-                        // header.l1_batch_number = entry.l1_batch_number_of_initial_write;
                     }
                 } else {
                     has_more = false;
