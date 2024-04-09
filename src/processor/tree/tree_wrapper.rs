@@ -154,7 +154,7 @@ impl TreeWrapper {
         tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
 
         let snapshot = self.snapshot.lock().await;
-        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64())?;
+        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64() + 1)?;
 
         Ok(())
     }
