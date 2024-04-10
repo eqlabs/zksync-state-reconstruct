@@ -14,7 +14,7 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
-use crate::processor::snapshot::exporter::protobuf::SnapshotStorageLogsChunk;
+use crate::processor::snapshot::types::SnapshotStorageLogsChunk;
 
 #[derive(Error, Debug)]
 pub enum TreeError {
@@ -135,17 +135,11 @@ impl TreeWrapper {
             tracing::info!("Importing chunk {}/{}...", i + 1, chunks.len());
 
             for log in &chunk.storage_logs {
-                let key = U256::from_big_endian(log.storage_key());
-                let index = log.enumeration_index();
-
-                let value_bytes: [u8; 32] = log.storage_value().try_into()?;
-                let value = H256::from(&value_bytes);
-
-                tree_entries.push(TreeEntry::new(key, index, value));
+                tree_entries.push(TreeEntry::new(log.key, log.enumeration_index, log.value));
                 self.snapshot
                     .lock()
                     .await
-                    .add_key(&key)
+                    .add_key(&log.key)
                     .expect("cannot add key");
             }
 

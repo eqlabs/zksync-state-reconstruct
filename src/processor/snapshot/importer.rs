@@ -1,19 +1,15 @@
 use std::{
     fs,
-    io::Read,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use eyre::Result;
-use flate2::read::GzDecoder;
-use prost::Message;
 use state_reconstruct_fetcher::{constants::storage::INNER_DB_NAME, database::InnerDB};
 use tokio::sync::Mutex;
 
 use super::{
-    exporter::protobuf::{SnapshotFactoryDependencies, SnapshotStorageLogsChunk},
-    types::SnapshotHeader,
+    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
     SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
 use crate::processor::tree::tree_wrapper::TreeWrapper;
@@ -59,13 +55,7 @@ impl SnapshotImporter {
             header.l1_batch_number, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX
         ));
         let bytes = fs::read(factory_deps_path)?;
-        let mut decoder = GzDecoder::new(&bytes[..]);
-
-        let mut decompressed_bytes = Vec::new();
-        decoder.read_to_end(&mut decompressed_bytes)?;
-
-        let factory_deps = SnapshotFactoryDependencies::decode(&decompressed_bytes[..])?;
-        Ok(factory_deps)
+        SnapshotFactoryDependencies::decode(&bytes)
     }
 
     fn read_storage_logs_chunks(
@@ -85,15 +75,7 @@ impl SnapshotImporter {
                 .directory
                 .join(path.file_name().expect("path has no file name"));
             let bytes = fs::read(factory_deps_path)?;
-            let mut decoder = GzDecoder::new(&bytes[..]);
-
-            let mut decompressed_bytes = Vec::new();
-            decoder.read_to_end(&mut decompressed_bytes)?;
-
-            // TODO: It would be nice to avoid the intermediary step of decoding. Something like
-            // implementing a method on the types::* that does it automatically. Will improve
-            // readabitly for the export code too as a bonus.
-            let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&decompressed_bytes[..])?;
+            let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&bytes)?;
             chunks.push(storage_logs_chunk);
         }
         Ok(chunks)

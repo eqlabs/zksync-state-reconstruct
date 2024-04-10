@@ -3,9 +3,9 @@ use std::{fs, path::PathBuf, str::FromStr};
 pub mod database;
 pub mod exporter;
 pub mod importer;
+pub mod types;
 
 mod bytecode;
-mod types;
 
 use async_trait::async_trait;
 use blake2::{Blake2s256, Digest};
@@ -27,6 +27,10 @@ use crate::processor::snapshot::types::MiniblockNumber;
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
+
+pub mod protobuf {
+    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
+}
 
 pub struct SnapshotBuilder {
     database: SnapshotDB,
