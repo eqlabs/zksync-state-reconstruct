@@ -54,16 +54,17 @@ impl SnapshotDB {
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let mut buffer = [0; 32];
                 key.to_big_endian(&mut buffer);
-                if let Ok(Some(log)) = self.get_storage_log(&buffer) {
-                    let existing_value = U256::from(log.value.to_fixed_bytes());
-                    // NOTE: We're explicitly allowing over-/underflow as per the spec.
-                    match value {
-                        PackingType::Add(v) => existing_value.overflowing_add(v).0,
-                        PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
-                        _ => unreachable!(),
-                    }
+                let existing_value = if let Some(log) = self.get_storage_log(&buffer).unwrap() {
+                    U256::from(log.value.to_fixed_bytes())
                 } else {
-                    panic!("no key found for version")
+                    U256::from(0)
+                };
+
+                // NOTE: We're explicitly allowing over-/underflow as per the spec.
+                match value {
+                    PackingType::Add(v) => existing_value.overflowing_add(v).0,
+                    PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
+                    _ => unreachable!(),
                 }
             }
         };
