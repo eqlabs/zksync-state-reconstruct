@@ -53,6 +53,11 @@ impl SnapshotBuilder {
 
         Self { database }
     }
+
+    // Gets the next L1 batch number to be processed for ues in state recovery.
+    pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
+        self.database.get_last_l1_batch_number()
+    }
 }
 
 #[async_trait]
@@ -109,6 +114,10 @@ impl Processor for SnapshotBuilder {
                     })
                     .expect("failed to save factory dep");
             }
+
+            if let Some(number) = block.l1_block_number {
+                let _ = self.database.set_last_l1_batch_number(number);
+            };
         }
     }
 }

@@ -131,7 +131,9 @@ impl TreeWrapper {
     ) -> Result<()> {
         let mut tree_entries = Vec::new();
 
-        for chunk in &chunks {
+        for (i, chunk) in chunks.iter().enumerate() {
+            tracing::info!("Importing chunk {}/{}...", i + 1, chunks.len());
+
             for log in &chunk.storage_logs {
                 let key = U256::from_big_endian(log.storage_key());
                 let index = log.enumeration_index();
@@ -146,15 +148,18 @@ impl TreeWrapper {
                     .add_key(&key)
                     .expect("cannot add key");
             }
+
+            tracing::info!("Chunk {} was succesfully imported!", i + 1);
         }
 
+        tracing::info!("Extending merkle tree with imported storage logs...");
         let num_tree_entries = tree_entries.len();
         self.tree.extend(tree_entries);
 
         tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
 
         let snapshot = self.snapshot.lock().await;
-        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64())?;
+        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64() + 1)?;
 
         Ok(())
     }

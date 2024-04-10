@@ -14,6 +14,7 @@ pub const FACTORY_DEPS: &str = "factory_deps";
 const METADATA: &str = "metadata";
 
 const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
+const LAST_L1_BATCH_NUMBER: &str = "LAST_L1_BATCH_NUMBER";
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Error, Debug)]
@@ -115,6 +116,27 @@ impl SnapshotDB {
         // those CFs is ensured in construction of this DB.
         let metadata = self.cf_handle(METADATA).unwrap();
         self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
+            .map_err(Into::into)
+    }
+
+    pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let metadata = self.cf_handle(METADATA).unwrap();
+        let batch = self.get_cf(metadata, LAST_L1_BATCH_NUMBER)?.map(|bytes| {
+            u64::from_be_bytes([
+                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+            ])
+        });
+
+        Ok(batch)
+    }
+
+    pub fn set_last_l1_batch_number(&self, batch_number: u64) -> Result<()> {
+        // Unwrapping column family handle here is safe because presence of
+        // those CFs is ensured in construction of this DB.
+        let metadata = self.cf_handle(METADATA).unwrap();
+        self.put_cf(metadata, LAST_L1_BATCH_NUMBER, batch_number.to_be_bytes())
             .map_err(Into::into)
     }
 

@@ -18,7 +18,11 @@ use eyre::Result;
 use processor::snapshot::{
     exporter::SnapshotExporter, importer::SnapshotImporter, SnapshotBuilder,
 };
-use state_reconstruct_fetcher::{constants::storage, l1_fetcher::L1Fetcher, types::CommitBlock};
+use state_reconstruct_fetcher::{
+    constants::{ethereum, storage},
+    l1_fetcher::{L1Fetcher, L1FetcherOptions},
+    types::CommitBlock,
+};
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
@@ -153,9 +157,19 @@ async fn main() -> Result<()> {
             l1_fetcher_options,
             db_path,
         } => {
-            let fetcher_options = l1_fetcher_options.into();
-            let fetcher = L1Fetcher::new(fetcher_options, None)?;
             let processor = SnapshotBuilder::new(db_path);
+
+            let mut fetcher_options: L1FetcherOptions = l1_fetcher_options.into();
+            if let Ok(Some(batch_number)) = processor.get_last_l1_batch_number() {
+                if batch_number > ethereum::GENESIS_BLOCK {
+                    tracing::info!(
+                        "Found a preexisting snapshot db, continuing from L1 block: {batch_number}"
+                    );
+                    fetcher_options.start_block = batch_number + 1;
+                }
+            }
+
+            let fetcher = L1Fetcher::new(fetcher_options, None)?;
 
             let (tx, rx) = mpsc::channel::<CommitBlock>(5);
             let processor_handle = tokio::spawn(async move {

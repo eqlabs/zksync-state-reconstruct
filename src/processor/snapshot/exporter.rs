@@ -4,6 +4,7 @@ use std::{
 };
 
 use bytes::BytesMut;
+use ethers::types::U64;
 use eyre::Result;
 use flate2::{write::GzEncoder, Compression};
 use prost::Message;
@@ -38,7 +39,17 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, chunk_size: u64) -> Result<()> {
-        let mut header = SnapshotHeader::default();
+        let l1_batch_number = U64::from(
+            self.database
+                .get_last_l1_batch_number()?
+                .expect("snapshot db contains no L1 batch number"),
+        );
+
+        let mut header = SnapshotHeader {
+            l1_batch_number,
+            ..Default::default()
+        };
+
         self.export_storage_logs(chunk_size, &mut header)?;
         self.export_factory_deps(&mut header)?;
 
@@ -146,7 +157,6 @@ impl SnapshotExporter {
                         };
 
                         chunk.storage_logs.push(pb);
-                        header.l1_batch_number = entry.l1_batch_number_of_initial_write;
                     }
                 } else {
                     has_more = false;
@@ -159,7 +169,7 @@ impl SnapshotExporter {
                 buf.reserve(chunk_len - buf.capacity());
             }
 
-            let path = PathBuf::new().join(&self.basedir).join(format!(
+            let path = &self.basedir.join(format!(
                 "snapshot_l1_batch_{}_storage_logs_part_{:0>4}.proto.gzip",
                 header.l1_batch_number, chunk_id
             ));
