@@ -48,13 +48,13 @@ impl SnapshotDB {
         Ok(Self(db))
     }
 
-    pub fn process_value(&self, key: U256, value: PackingType) -> H256 {
+    pub fn process_value(&self, key: U256, value: PackingType) -> Result<H256> {
         let processed_value = match value {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let mut buffer = [0; 32];
                 key.to_big_endian(&mut buffer);
-                let existing_value = if let Some(log) = self.get_storage_log(&buffer).unwrap() {
+                let existing_value = if let Some(log) = self.get_storage_log(&buffer)? {
                     U256::from(log.value.to_fixed_bytes())
                 } else {
                     U256::from(0)
@@ -71,7 +71,7 @@ impl SnapshotDB {
 
         let mut buffer = [0; 32];
         processed_value.to_big_endian(&mut buffer);
-        H256::from(buffer)
+        Ok(H256::from(buffer))
     }
 
     pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
