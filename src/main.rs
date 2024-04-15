@@ -20,8 +20,8 @@ use processor::snapshot::{
 };
 use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
+    l1_fetcher::{L1Fetcher, L1FetcherOptions},
     types::CommitBlock,
-    L1Fetcher, L1FetcherOptions,
 };
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
