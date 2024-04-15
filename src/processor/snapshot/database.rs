@@ -48,29 +48,30 @@ impl SnapshotDB {
         Ok(Self(db))
     }
 
-    pub fn process_value(&self, key: U256, value: PackingType) -> H256 {
+    pub fn process_value(&self, key: U256, value: PackingType) -> Result<H256> {
         let processed_value = match value {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let mut buffer = [0; 32];
-                key.to_little_endian(&mut buffer);
-                if let Ok(Some(log)) = self.get_storage_log(&buffer) {
-                    let existing_value = U256::from(log.value.to_fixed_bytes());
-                    // NOTE: We're explicitly allowing over-/underflow as per the spec.
-                    match value {
-                        PackingType::Add(v) => existing_value.overflowing_add(v).0,
-                        PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
-                        _ => unreachable!(),
-                    }
+                key.to_big_endian(&mut buffer);
+                let existing_value = if let Some(log) = self.get_storage_log(&buffer)? {
+                    U256::from(log.value.to_fixed_bytes())
                 } else {
-                    panic!("no key found for version")
+                    U256::from(0)
+                };
+
+                // NOTE: We're explicitly allowing over-/underflow as per the spec.
+                match value {
+                    PackingType::Add(v) => existing_value.overflowing_add(v).0,
+                    PackingType::Sub(v) => existing_value.overflowing_sub(v).0,
+                    _ => unreachable!(),
                 }
             }
         };
 
         let mut buffer = [0; 32];
         processed_value.to_big_endian(&mut buffer);
-        H256::from(buffer)
+        Ok(H256::from(buffer))
     }
 
     pub fn new_read_only(db_path: PathBuf) -> Result<Self> {

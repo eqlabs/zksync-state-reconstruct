@@ -70,10 +70,16 @@ impl Processor for SnapshotBuilder {
         while let Some(block) = rx.recv().await {
             // Initial calldata.
             for (key, value) in &block.initial_storage_changes {
+                let key = U256::from_little_endian(key);
+                let value = self
+                    .database
+                    .process_value(key, *value)
+                    .expect("failed to get key from database");
+
                 self.database
                     .insert_storage_log(&mut SnapshotStorageLog {
-                        key: U256::from_little_endian(key),
-                        value: self.database.process_value(U256::from(key), *value),
+                        key,
+                        value,
                         miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
                             block.l1_block_number.unwrap_or(0),
@@ -90,7 +96,10 @@ impl Processor for SnapshotBuilder {
                     .database
                     .get_key_from_index(index as u64)
                     .expect("missing key");
-                let value = self.database.process_value(U256::from(&key[0..32]), *value);
+                let value = self
+                    .database
+                    .process_value(U256::from_big_endian(&key[0..32]), *value)
+                    .expect("failed to get key from database");
 
                 if self
                     .database
@@ -233,4 +242,60 @@ fn derive_final_address_for_params(address: &Address, key: &U256) -> [u8; 32] {
     result.copy_from_slice(Blake2s256::digest(buffer).as_slice());
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use indexmap::IndexMap;
+    use state_reconstruct_fetcher::types::PackingType;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn simple() {
+        let db_dir = "./test_db".to_string();
+        let _ = fs::remove_dir_all(db_dir.clone());
+
+        {
+            let builder = SnapshotBuilder::new(Some(db_dir.clone()));
+            let (tx, rx) = mpsc::channel::<CommitBlock>(5);
+
+            tokio::spawn(async move {
+                let key = U256::from_dec_str("1234").unwrap();
+                let mut key1 = [0u8; 32];
+                key.to_little_endian(&mut key1);
+                let val1 = U256::from_dec_str("5678").unwrap();
+                let mut initial_storage_changes = IndexMap::new();
+                initial_storage_changes.insert(key1, PackingType::NoCompression(val1));
+                let repeated_storage_changes = IndexMap::new();
+                let cb = CommitBlock {
+                    l1_block_number: Some(1),
+                    l2_block_number: 2,
+                    index_repeated_storage_changes: 0,
+                    new_state_root: Vec::new(),
+                    initial_storage_changes,
+                    repeated_storage_changes,
+                    factory_deps: Vec::new(),
+                };
+                tx.send(cb).await.unwrap();
+            });
+
+            builder.run(rx).await;
+        }
+
+        let db = SnapshotDB::new(PathBuf::from(db_dir.clone())).unwrap();
+
+        let key = U256::from_dec_str("1234").unwrap();
+        let mut key1 = [0u8; 32];
+        key.to_big_endian(&mut key1);
+        let Some(sl1) = db.get_storage_log(&key1).unwrap() else {
+            panic!("key1 not found")
+        };
+
+        assert_eq!(sl1.key, key1.into());
+
+        fs::remove_dir_all(db_dir).unwrap();
+    }
 }
