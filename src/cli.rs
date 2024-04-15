@@ -1,7 +1,5 @@
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use state_reconstruct_fetcher::{
-    constants::ethereum, l1_fetcher::L1FetcherOptions as FetcherOptions,
-};
+use state_reconstruct_fetcher::{constants::ethereum, L1FetcherOptions as FetcherOptions};
 
 use crate::processor::snapshot;
 

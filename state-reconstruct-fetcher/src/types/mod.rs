@@ -3,6 +3,7 @@ use ethers::{abi, types::U256};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json_any_key::any_key_map;
+use state_reconstruct_storage::PackingType;
 use thiserror::Error;
 
 use self::{v1::V1, v2::V2, v3::V3};
@@ -41,14 +42,6 @@ pub enum ParseError {
 
     #[error("blob format error: {0}")]
     BlobFormatError(#[from] BlobResponseFormatError),
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum PackingType {
-    Add(U256),
-    Sub(U256),
-    Transform(U256),
-    NoCompression(U256),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

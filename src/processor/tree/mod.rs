@@ -8,10 +8,10 @@ use ethers::types::H256;
 use eyre::Result;
 use state_reconstruct_fetcher::{
     constants::storage::INNER_DB_NAME,
-    database::InnerDB,
     metrics::{PerfMetric, METRICS_TRACING_TARGET},
     types::CommitBlock,
 };
+use state_reconstruct_storage::InnerDB;
 use tokio::{
     sync::{mpsc, Mutex},
     time::Instant,

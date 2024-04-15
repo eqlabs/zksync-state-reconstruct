@@ -3,18 +3,14 @@ use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, s
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
-use state_reconstruct_fetcher::{
-    constants::storage::INITAL_STATE_PATH,
-    database::InnerDB,
-    types::{CommitBlock, PackingType},
-};
+use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
+use state_reconstruct_storage::{types::SnapshotStorageLogsChunk, InnerDB, PackingType};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
-use crate::processor::snapshot::types::SnapshotStorageLogsChunk;
 
 #[derive(Error, Debug)]
 pub enum TreeError {

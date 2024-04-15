@@ -5,35 +5,33 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = ["state-reconstruct-fetcher", "state-reconstruct-fetcher/blobscan-client"]
+members = [
+  "state-reconstruct-fetcher",
+  "state-reconstruct-fetcher/blobscan-client",
+  "state-reconstruct-storage",
+]
 
 [dependencies]
 async-trait = "0.1.74"
 bincode = "1"
 blake2 = "0.10.6"
 blobscan-client = { path = "./state-reconstruct-fetcher/blobscan-client" }
-bytes = "1.5"
 chrono = "0.4.31"
 clap = { version = "4.4.7", features = ["derive", "env"] }
 ethers = "1.0.2"
 eyre = "0.6.8"
-flate2 = "1.0.28"
 hex = "0.4.3"
 indexmap = { version = "2.0.2" }
 primitive-types = "0.12.2"
-prost = "0.12"
 rocksdb = "0.21"
 serde = { version = "1.0.189", features = ["derive"] }
 serde_json = { version = "1.0.107", features = ["std"] }
 state-reconstruct-fetcher = { path = "./state-reconstruct-fetcher" }
+state-reconstruct-storage = { path = "./state-reconstruct-storage" }
 thiserror = "1.0.50"
 tikv-jemallocator = "0.5"
 tokio = { version = "1.33.0", features = ["macros"] }
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
-zkevm_opcode_defs = { git = "https://github.com/matter-labs/era-zkevm_opcode_defs.git" }
 zksync_merkle_tree = { git = "https://github.com/matter-labs/zksync-era.git" }
 zksync_storage = { git = "https://github.com/matter-labs/zksync-era.git" }
-
-[build-dependencies]
-prost-build = "0.12"

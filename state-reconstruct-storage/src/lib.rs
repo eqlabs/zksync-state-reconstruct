@@ -1,31 +1,47 @@
+pub mod bytecode;
+pub mod types;
+
 use std::{ops::Deref, path::PathBuf};
 
-use ethers::types::{H256, U256};
+use ethers::types::{H256, U256, U64};
 use eyre::Result;
 use rocksdb::{Options, DB};
-use state_reconstruct_fetcher::types::PackingType;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use types::{SnapshotFactoryDependency, SnapshotStorageLog};
 
-use super::types::{SnapshotFactoryDependency, SnapshotStorageLog};
+pub const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
+pub const KEY_TO_INDEX_MAP: &str = "key_to_index_map";
 
 pub const STORAGE_LOGS: &str = "storage_logs";
-pub const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
 pub const FACTORY_DEPS: &str = "factory_deps";
-const METADATA: &str = "metadata";
 
-const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
-const LAST_L1_BATCH_NUMBER: &str = "LAST_L1_BATCH_NUMBER";
+pub const METADATA: &str = "metadata";
 
-#[allow(clippy::enum_variant_names)]
+pub const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
+/// The latest l1 block number that was processed.
+pub const LATEST_L1_BLOCK_NUMBER: &str = "LATEST_L1_BLOCK_NUMBER";
+/// The latest l2 block number that was processed.
+pub const LATEST_L2_BLOCK_NUMBER: &str = "LATEST_L2_BLOCK_NUMBER";
+
+// NOTE: This is moved here as a temporary measure to resolve a cyclic dependency issue.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum PackingType {
+    Add(U256),
+    Sub(U256),
+    Transform(U256),
+    NoCompression(U256),
+}
+
 #[derive(Error, Debug)]
 pub enum DatabaseError {
-    #[error("no such key")]
+    #[error("key not found")]
     NoSuchKey,
 }
 
-pub struct SnapshotDB(DB);
+pub struct InnerDB(DB);
 
-impl Deref for SnapshotDB {
+impl Deref for InnerDB {
     type Target = DB;
 
     fn deref(&self) -> &Self::Target {
@@ -33,16 +49,23 @@ impl Deref for SnapshotDB {
     }
 }
 
-impl SnapshotDB {
+impl InnerDB {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
+        db_opts.set_max_open_files(1024);
 
         let db = DB::open_cf(
             &db_opts,
             db_path,
-            vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
+            vec![
+                METADATA,
+                STORAGE_LOGS,
+                FACTORY_DEPS,
+                INDEX_TO_KEY_MAP,
+                KEY_TO_INDEX_MAP,
+            ],
         )?;
 
         Ok(Self(db))
@@ -87,42 +110,11 @@ impl SnapshotDB {
         Ok(Self(db))
     }
 
-    pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        Ok(
-            if let Some(idx_bytes) = self.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
-                u64::from_be_bytes([
-                    idx_bytes[0],
-                    idx_bytes[1],
-                    idx_bytes[2],
-                    idx_bytes[3],
-                    idx_bytes[4],
-                    idx_bytes[5],
-                    idx_bytes[6],
-                    idx_bytes[7],
-                ])
-            } else {
-                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(0))?;
-                0
-            },
-        )
-    }
-
-    pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
-            .map_err(Into::into)
-    }
-
     pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let metadata = self.cf_handle(METADATA).unwrap();
-        let batch = self.get_cf(metadata, LAST_L1_BATCH_NUMBER)?.map(|bytes| {
+        let batch = self.get_cf(metadata, LATEST_L1_BLOCK_NUMBER)?.map(|bytes| {
             u64::from_be_bytes([
                 bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
             ])
@@ -135,7 +127,7 @@ impl SnapshotDB {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let metadata = self.cf_handle(METADATA).unwrap();
-        self.put_cf(metadata, LAST_L1_BATCH_NUMBER, batch_number.to_be_bytes())
+        self.put_cf(metadata, LATEST_L1_BLOCK_NUMBER, batch_number.to_be_bytes())
             .map_err(Into::into)
     }
 
@@ -200,5 +192,106 @@ impl SnapshotDB {
         let factory_deps = self.cf_handle(FACTORY_DEPS).unwrap();
         self.put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
             .map_err(Into::into)
+    }
+
+    pub fn get_latest_l1_block_number(&self) -> Result<U64> {
+        self.get_metadata_value(LATEST_L1_BLOCK_NUMBER)
+            .map(U64::from)
+    }
+
+    pub fn set_latest_l1_block_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(LATEST_L1_BLOCK_NUMBER, number)
+    }
+
+    pub fn get_latest_l2_block_number(&self) -> Result<u64> {
+        self.get_metadata_value(LATEST_L2_BLOCK_NUMBER)
+    }
+
+    pub fn set_latest_l2_block_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(LATEST_L2_BLOCK_NUMBER, number)
+    }
+
+    pub fn get_last_repeated_key_index(&self) -> Result<u64> {
+        self.get_metadata_value(LAST_REPEATED_KEY_INDEX)
+    }
+
+    pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
+        self.set_metadata_value(LAST_REPEATED_KEY_INDEX, idx)
+    }
+
+    fn get_metadata_value(&self, value_name: &str) -> Result<u64> {
+        let metadata = self.cf_handle(METADATA).unwrap();
+        Ok(
+            if let Some(idx_bytes) = self.get_cf(metadata, value_name)? {
+                u64::from_be_bytes([
+                    idx_bytes[0],
+                    idx_bytes[1],
+                    idx_bytes[2],
+                    idx_bytes[3],
+                    idx_bytes[4],
+                    idx_bytes[5],
+                    idx_bytes[6],
+                    idx_bytes[7],
+                ])
+            } else {
+                0
+            },
+        )
+    }
+
+    fn set_metadata_value(&self, value_name: &str, value: u64) -> Result<()> {
+        let metadata = self.cf_handle(METADATA).unwrap();
+        self.put_cf(metadata, value_name, value.to_be_bytes())
+            .map_err(Into::into)
+    }
+
+    pub fn get_key(&self, idx: u64) -> Result<U256> {
+        let idx2key = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
+        let idx_bytes = idx.to_be_bytes();
+        if let Some(key_bytes) = self.get_cf(idx2key, idx_bytes)? {
+            Ok(U256::from_big_endian(&key_bytes))
+        } else {
+            Err(DatabaseError::NoSuchKey.into())
+        }
+    }
+
+    pub fn add_key(&mut self, key: &U256) -> Result<()> {
+        let mut key_bytes: [u8; 32] = [0; 32];
+        key.to_big_endian(&mut key_bytes);
+
+        let key2idx = self.cf_handle(KEY_TO_INDEX_MAP).unwrap();
+        // FIXME: These should be inside a transaction...
+        if let Some(_idx_bytes) = self.get_cf(key2idx, key_bytes)? {
+            return Ok(());
+        }
+
+        let idx2key = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
+        let idx = self.get_last_repeated_key_index()?;
+        let idx_bytes = idx.to_be_bytes();
+        self.put_cf(idx2key, idx_bytes, key_bytes)?;
+        self.put_cf(key2idx, key_bytes, idx_bytes)?;
+        self.set_last_repeated_key_index(idx + 1)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn basics() {
+        let db_dir = PathBuf::from("./test_inner_db");
+        {
+            let db = InnerDB::new(db_dir.clone()).unwrap();
+            let zero = db.get_last_repeated_key_index().unwrap();
+            assert_eq!(zero, 0);
+            db.set_last_repeated_key_index(1).unwrap();
+            let one = db.get_last_repeated_key_index().unwrap();
+            assert_eq!(one, 1);
+        }
+        fs::remove_dir_all(db_dir).unwrap();
     }
 }

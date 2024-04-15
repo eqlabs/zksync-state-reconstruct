@@ -1,11 +1,7 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
-pub mod database;
 pub mod exporter;
 pub mod importer;
-pub mod types;
-
-mod bytecode;
 
 use async_trait::async_trait;
 use blake2::{Blake2s256, Digest};
@@ -15,25 +11,21 @@ use state_reconstruct_fetcher::{
     constants::{ethereum, storage},
     types::CommitBlock,
 };
+use state_reconstruct_storage::{
+    bytecode,
+    types::{MiniblockNumber, SnapshotFactoryDependency, SnapshotStorageLog},
+    InnerDB,
+};
 use tokio::sync::mpsc;
 
-use self::{
-    database::SnapshotDB,
-    types::{SnapshotFactoryDependency, SnapshotStorageLog},
-};
 use super::Processor;
-use crate::processor::snapshot::types::MiniblockNumber;
 
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
 
-pub mod protobuf {
-    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
-}
-
 pub struct SnapshotBuilder {
-    database: SnapshotDB,
+    database: InnerDB,
 }
 
 impl SnapshotBuilder {
@@ -43,7 +35,7 @@ impl SnapshotBuilder {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let mut database = SnapshotDB::new(db_path).unwrap();
+        let mut database = InnerDB::new(db_path).unwrap();
 
         let idx = database
             .get_last_repeated_key_index()
@@ -136,7 +128,7 @@ impl Processor for SnapshotBuilder {
 
 // TODO: Can this be made somewhat generic?
 /// Attempts to reconstruct the genesis state from a CSV file.
-fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()> {
+fn reconstruct_genesis_state(database: &mut InnerDB, path: &str) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
         input
             .strip_prefix("E'\\\\x")
@@ -244,7 +236,7 @@ mod tests {
     use std::fs;
 
     use indexmap::IndexMap;
-    use state_reconstruct_fetcher::types::PackingType;
+    use state_reconstruct_storage::{InnerDB, PackingType};
 
     use super::*;
 
@@ -279,7 +271,7 @@ mod tests {
             builder.run(rx).await;
         }
 
-        let db = SnapshotDB::new(PathBuf::from(db_dir.clone())).unwrap();
+        let db = InnerDB::new(PathBuf::from(db_dir.clone())).unwrap();
 
         let key = U256::from_dec_str("1234").unwrap();
         let Some(log) = db.get_storage_log(&key).unwrap() else {

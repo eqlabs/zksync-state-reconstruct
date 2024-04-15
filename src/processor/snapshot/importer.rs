@@ -5,13 +5,14 @@ use std::{
 };
 
 use eyre::Result;
-use state_reconstruct_fetcher::{constants::storage::INNER_DB_NAME, database::InnerDB};
+use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
+use state_reconstruct_storage::{
+    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
+    InnerDB,
+};
 use tokio::sync::Mutex;
 
-use super::{
-    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
-    SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
-};
+use super::{SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME};
 use crate::processor::tree::tree_wrapper::TreeWrapper;
 
 pub struct SnapshotImporter {
