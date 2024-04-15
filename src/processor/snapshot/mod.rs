@@ -70,15 +70,14 @@ impl Processor for SnapshotBuilder {
         while let Some(block) = rx.recv().await {
             // Initial calldata.
             for (key, value) in &block.initial_storage_changes {
-                let key = U256::from_little_endian(key);
                 let value = self
                     .database
-                    .process_value(key, *value)
+                    .process_value(*key, *value)
                     .expect("failed to get key from database");
 
                 self.database
                     .insert_storage_log(&mut SnapshotStorageLog {
-                        key,
+                        key: *key,
                         value,
                         miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
@@ -260,11 +259,10 @@ mod tests {
 
             tokio::spawn(async move {
                 let key = U256::from_dec_str("1234").unwrap();
-                let mut key1 = [0u8; 32];
-                key.to_little_endian(&mut key1);
-                let val1 = U256::from_dec_str("5678").unwrap();
+                let val = U256::from_dec_str("5678").unwrap();
                 let mut initial_storage_changes = IndexMap::new();
-                initial_storage_changes.insert(key1, PackingType::NoCompression(val1));
+                initial_storage_changes.insert(key, PackingType::NoCompression(val));
+
                 let repeated_storage_changes = IndexMap::new();
                 let cb = CommitBlock {
                     l1_block_number: Some(1),
@@ -284,13 +282,11 @@ mod tests {
         let db = SnapshotDB::new(PathBuf::from(db_dir.clone())).unwrap();
 
         let key = U256::from_dec_str("1234").unwrap();
-        let mut key1 = [0u8; 32];
-        key.to_big_endian(&mut key1);
-        let Some(sl1) = db.get_storage_log(&key1).unwrap() else {
-            panic!("key1 not found")
+        let Some(log) = db.get_storage_log(&key).unwrap() else {
+            panic!("key not found")
         };
 
-        assert_eq!(sl1.key, key1.into());
+        assert_eq!(log.key, key);
 
         fs::remove_dir_all(db_dir).unwrap();
     }

@@ -64,15 +64,14 @@ impl TreeWrapper {
         let mut index =
             block.index_repeated_storage_changes - (block.initial_storage_changes.len() as u64);
         for (key, value) in &block.initial_storage_changes {
-            let key = U256::from_little_endian(key);
-            self.insert_known_key(index, key);
-            let value = self.process_value(key, *value);
+            self.insert_known_key(index, *key);
+            let value = self.process_value(*key, *value);
 
-            tree_entries.push(TreeEntry::new(key, index, value));
+            tree_entries.push(TreeEntry::new(*key, index, value));
             self.snapshot
                 .lock()
                 .await
-                .add_key(&key)
+                .add_key(key)
                 .expect("cannot add key");
             index += 1;
         }
