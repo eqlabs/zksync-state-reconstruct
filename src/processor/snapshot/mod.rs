@@ -217,17 +217,13 @@ fn reconstruct_genesis_state(database: &mut SnapshotDB, path: &str) -> Result<()
         let key = U256::from_little_endian(&derived_key);
         let value = H256::from(tmp);
 
-        if database.get_storage_log(&derived_key)?.is_none() {
-            database.insert_storage_log(&mut SnapshotStorageLog {
-                key,
-                value,
-                miniblock_number_of_initial_write: MiniblockNumber::from(miniblock_number),
-                l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
-                enumeration_index: 0,
-            })?;
-        } else {
-            database.update_storage_log_entry(&derived_key, value.as_bytes())?;
-        }
+        database.insert_storage_log(&mut SnapshotStorageLog {
+            key,
+            value,
+            miniblock_number_of_initial_write: MiniblockNumber::from(miniblock_number),
+            l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
+            enumeration_index: 0,
+        })?;
     }
 
     Ok(())

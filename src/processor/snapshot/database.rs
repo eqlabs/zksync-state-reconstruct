@@ -194,17 +194,6 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
-    pub fn update_storage_log_entry(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
-        let entry_bs = self.get_cf(storage_logs, key)?.unwrap();
-        let mut entry: SnapshotStorageLog = bincode::deserialize(&entry_bs)?;
-        entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
-        self.put_cf(storage_logs, key, bincode::serialize(&entry)?)
-            .map_err(Into::into)
-    }
-
     pub fn insert_factory_dep(&self, fdep: &SnapshotFactoryDependency) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
