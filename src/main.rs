@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
                 ReconstructSource::L1 { l1_fetcher_options } => {
                     let fetcher_options = l1_fetcher_options.into();
                     let processor = TreeProcessor::new(db_path.clone()).await?;
-                    let fetcher = L1Fetcher::new(fetcher_options, Some(processor.get_snapshot()))?;
+                    let fetcher = L1Fetcher::new(fetcher_options, Some(processor.get_inner_db()))?;
                     let (tx, rx) = mpsc::channel::<CommitBlock>(5);
 
                     let processor_handle = tokio::spawn(async move {
@@ -160,7 +160,8 @@ async fn main() -> Result<()> {
             let processor = SnapshotBuilder::new(db_path);
 
             let mut fetcher_options: L1FetcherOptions = l1_fetcher_options.into();
-            if let Ok(Some(batch_number)) = processor.get_last_l1_batch_number() {
+            if let Ok(batch_number) = processor.get_latest_l1_batch_number() {
+                let batch_number = batch_number.as_u64();
                 if batch_number > ethereum::GENESIS_BLOCK {
                     tracing::info!(
                         "Found a preexisting snapshot db, continuing from L1 block: {batch_number}"

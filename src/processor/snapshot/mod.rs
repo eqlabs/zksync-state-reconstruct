@@ -14,7 +14,7 @@ use state_reconstruct_fetcher::{
 use state_reconstruct_storage::{
     bytecode,
     types::{MiniblockNumber, SnapshotFactoryDependency, SnapshotStorageLog},
-    InnerDB,
+    DBMode, InnerDB,
 };
 use tokio::sync::mpsc;
 
@@ -35,7 +35,7 @@ impl SnapshotBuilder {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let mut database = InnerDB::new(db_path).unwrap();
+        let mut database = InnerDB::new(db_path, DBMode::Snapshot).unwrap();
 
         let idx = database
             .get_last_repeated_key_index()
@@ -51,8 +51,8 @@ impl SnapshotBuilder {
     }
 
     // Gets the next L1 batch number to be processed for ues in state recovery.
-    pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
-        self.database.get_last_l1_batch_number()
+    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+        self.database.get_latest_l1_batch_number()
     }
 }
 
@@ -120,7 +120,7 @@ impl Processor for SnapshotBuilder {
             }
 
             if let Some(number) = block.l1_block_number {
-                let _ = self.database.set_last_l1_batch_number(number);
+                let _ = self.database.set_latest_l1_batch_number(number);
             };
         }
     }
@@ -236,7 +236,7 @@ mod tests {
     use std::fs;
 
     use indexmap::IndexMap;
-    use state_reconstruct_storage::{InnerDB, PackingType};
+    use state_reconstruct_storage::{DBMode, InnerDB, PackingType};
 
     use super::*;
 
@@ -271,7 +271,7 @@ mod tests {
             builder.run(rx).await;
         }
 
-        let db = InnerDB::new(PathBuf::from(db_dir.clone())).unwrap();
+        let db = InnerDB::new(PathBuf::from(db_dir.clone()), DBMode::Snapshot).unwrap();
 
         let key = U256::from_dec_str("1234").unwrap();
         let Some(log) = db.get_storage_log(&key).unwrap() else {

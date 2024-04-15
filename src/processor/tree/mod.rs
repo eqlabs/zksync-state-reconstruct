@@ -11,7 +11,7 @@ use state_reconstruct_fetcher::{
     metrics::{PerfMetric, METRICS_TRACING_TARGET},
     types::CommitBlock,
 };
-use state_reconstruct_storage::InnerDB;
+use state_reconstruct_storage::{DBMode::Reconstruction, InnerDB};
 use tokio::{
     sync::{mpsc, Mutex},
     time::Instant,
@@ -26,7 +26,7 @@ pub struct TreeProcessor {
     /// The internal merkle tree.
     tree: TreeWrapper,
     /// The stored state snapshot.
-    snapshot: Arc<Mutex<InnerDB>>,
+    inner_db: Arc<Mutex<InnerDB>>,
 }
 
 impl TreeProcessor {
@@ -46,15 +46,15 @@ impl TreeProcessor {
             );
         }
 
-        let new_state = InnerDB::new(inner_db_path.clone())?;
-        let snapshot = Arc::new(Mutex::new(new_state));
-        let tree = TreeWrapper::new(&db_path, snapshot.clone(), init).await?;
+        let new_state = InnerDB::new(inner_db_path.clone(), Reconstruction)?;
+        let inner_db = Arc::new(Mutex::new(new_state));
+        let tree = TreeWrapper::new(&db_path, inner_db.clone(), init).await?;
 
-        Ok(Self { tree, snapshot })
+        Ok(Self { tree, inner_db })
     }
 
-    pub fn get_snapshot(&self) -> Arc<Mutex<InnerDB>> {
-        self.snapshot.clone()
+    pub fn get_inner_db(&self) -> Arc<Mutex<InnerDB>> {
+        self.inner_db.clone()
     }
 }
 
@@ -66,10 +66,10 @@ impl Processor for TreeProcessor {
         while let Some(block) = rx.recv().await {
             // Check if we've already processed this block.
             let latest_l2 = self
-                .snapshot
+                .inner_db
                 .lock()
                 .await
-                .get_latest_l2_block_number()
+                .get_latest_l2_batch_number()
                 .expect("value should default to 0");
             if latest_l2 >= block.l2_block_number {
                 tracing::debug!(
@@ -89,10 +89,10 @@ impl Processor for TreeProcessor {
 
             // Update snapshot values.
             before = Instant::now();
-            self.snapshot
+            self.inner_db
                 .lock()
                 .await
-                .set_latest_l2_block_number(block.l2_block_number)
+                .set_latest_l2_batch_number(block.l2_block_number)
                 .expect("db failed");
 
             if snapshot_metric.add(before.elapsed()) > 10 {

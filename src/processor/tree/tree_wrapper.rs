@@ -22,14 +22,14 @@ pub struct TreeWrapper {
     index_to_key: HashMap<u64, U256>,
     key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
-    snapshot: Arc<Mutex<InnerDB>>,
+    inner_db: Arc<Mutex<InnerDB>>,
 }
 
 impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
     pub async fn new(
         db_path: &Path,
-        snapshot: Arc<Mutex<InnerDB>>,
+        inner_db: Arc<Mutex<InnerDB>>,
         reconstruct: bool,
     ) -> Result<Self> {
         let db_opt = RocksDBOptions {
@@ -40,7 +40,7 @@ impl TreeWrapper {
         let mut tree = MerkleTree::new(db);
 
         if reconstruct {
-            let mut guard = snapshot.lock().await;
+            let mut guard = inner_db.lock().await;
             reconstruct_genesis_state(&mut tree, &mut guard, INITAL_STATE_PATH)?;
         }
 
@@ -48,7 +48,7 @@ impl TreeWrapper {
             index_to_key: HashMap::new(),
             key_to_value: HashMap::new(),
             tree,
-            snapshot,
+            inner_db,
         })
     }
 
@@ -64,7 +64,7 @@ impl TreeWrapper {
             let value = self.process_value(*key, *value);
 
             tree_entries.push(TreeEntry::new(*key, index, value));
-            self.snapshot
+            self.inner_db
                 .lock()
                 .await
                 .add_key(key)
@@ -77,7 +77,7 @@ impl TreeWrapper {
             let index = *index;
             // Index is 1-based so we subtract 1.
             let key = self
-                .snapshot
+                .inner_db
                 .lock()
                 .await
                 .get_key(index - 1)
@@ -131,7 +131,7 @@ impl TreeWrapper {
 
             for log in &chunk.storage_logs {
                 tree_entries.push(TreeEntry::new(log.key, log.enumeration_index, log.value));
-                self.snapshot
+                self.inner_db
                     .lock()
                     .await
                     .add_key(&log.key)
@@ -147,8 +147,8 @@ impl TreeWrapper {
 
         tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
 
-        let snapshot = self.snapshot.lock().await;
-        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64() + 1)?;
+        let db = self.inner_db.lock().await;
+        db.set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
 
         Ok(())
     }

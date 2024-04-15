@@ -1,17 +1,19 @@
 use std::path::{Path, PathBuf};
 
-use ethers::types::{U256, U64};
+use ethers::types::U256;
 use eyre::Result;
 use state_reconstruct_storage::{
+    snapshot_columns,
     types::{
         Proto, SnapshotFactoryDependencies, SnapshotFactoryDependency, SnapshotHeader,
         SnapshotStorageLogsChunk, SnapshotStorageLogsChunkMetadata,
     },
-    InnerDB, FACTORY_DEPS, INDEX_TO_KEY_MAP,
+    DBMode, InnerDB, INDEX_TO_KEY_MAP,
 };
 
-use super::{DEFAULT_DB_PATH, SNAPSHOT_HEADER_FILE_NAME};
-use crate::processor::snapshot::SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX;
+use crate::processor::snapshot::{
+    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
+};
 
 pub struct SnapshotExporter {
     basedir: PathBuf,
@@ -25,7 +27,7 @@ impl SnapshotExporter {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let database = InnerDB::new_read_only(db_path)?;
+        let database = InnerDB::new_read_only(db_path, DBMode::Snapshot)?;
         Ok(Self {
             basedir: basedir.to_path_buf(),
             database,
@@ -33,12 +35,7 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, chunk_size: u64) -> Result<()> {
-        let l1_batch_number = U64::from(
-            self.database
-                .get_last_l1_batch_number()?
-                .expect("snapshot db contains no L1 batch number"),
-        );
-
+        let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number,
             ..Default::default()
@@ -62,7 +59,10 @@ impl SnapshotExporter {
     fn export_factory_deps(&self, header: &mut SnapshotHeader) -> Result<()> {
         tracing::info!("Exporting factory dependencies...");
 
-        let storage_logs = self.database.cf_handle(FACTORY_DEPS).unwrap();
+        let storage_logs = self
+            .database
+            .cf_handle(snapshot_columns::FACTORY_DEPS)
+            .unwrap();
         let mut iterator = self
             .database
             .iterator_cf(storage_logs, rocksdb::IteratorMode::Start);

@@ -8,7 +8,7 @@ use eyre::Result;
 use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
 use state_reconstruct_storage::{
     types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
-    InnerDB,
+    DBMode, InnerDB,
 };
 use tokio::sync::Mutex;
 
@@ -25,7 +25,7 @@ pub struct SnapshotImporter {
 impl SnapshotImporter {
     pub async fn new(directory: PathBuf, db_path: &Path) -> Result<Self> {
         let inner_db_path = db_path.join(INNER_DB_NAME);
-        let new_state = InnerDB::new(inner_db_path.clone())?;
+        let new_state = InnerDB::new(inner_db_path.clone(), DBMode::Reconstruction)?;
         let snapshot = Arc::new(Mutex::new(new_state));
         let tree = TreeWrapper::new(db_path, snapshot.clone(), true).await?;
 

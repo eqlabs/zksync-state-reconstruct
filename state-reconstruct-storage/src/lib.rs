@@ -12,17 +12,24 @@ use types::{SnapshotFactoryDependency, SnapshotStorageLog};
 
 pub const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
 pub const KEY_TO_INDEX_MAP: &str = "key_to_index_map";
-
-pub const STORAGE_LOGS: &str = "storage_logs";
-pub const FACTORY_DEPS: &str = "factory_deps";
-
 pub const METADATA: &str = "metadata";
 
-pub const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
-/// The latest l1 block number that was processed.
-pub const LATEST_L1_BLOCK_NUMBER: &str = "LATEST_L1_BLOCK_NUMBER";
-/// The latest l2 block number that was processed.
-pub const LATEST_L2_BLOCK_NUMBER: &str = "LATEST_L2_BLOCK_NUMBER";
+pub mod reconstruction_columns {
+    pub const LAST_REPEATED_KEY_INDEX: &str = "RECONSTRUCTION_LAST_REPEATED_KEY_INDEX";
+    /// The latest l1 block number that was processed.
+    pub const LATEST_L1_BATCH: &str = "RECONSTRUCTION_LATEST_L1_BATCH";
+    /// The latest l2 block number that was processed.
+    pub const LATEST_L2_BATCH: &str = "RECONSTRUCTION_LATEST_L2_BATCH";
+}
+
+pub mod snapshot_columns {
+    pub const STORAGE_LOGS: &str = "storage_logs";
+    pub const FACTORY_DEPS: &str = "factory_deps";
+
+    pub const LAST_REPEATED_KEY_INDEX: &str = "SNAPSHOT_LAST_REPEATED_KEY_INDEX";
+    /// The latest l1 block number that was processed.
+    pub const LATEST_L1_BATCH: &str = "SNAPSHOT_LATEST_L1_BATCH";
+}
 
 // NOTE: This is moved here as a temporary measure to resolve a cyclic dependency issue.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -39,18 +46,28 @@ pub enum DatabaseError {
     NoSuchKey,
 }
 
-pub struct InnerDB(DB);
+#[derive(Default)]
+pub enum DBMode {
+    #[default]
+    Reconstruction,
+    Snapshot,
+}
+
+pub struct InnerDB {
+    db: DB,
+    mode: DBMode,
+}
 
 impl Deref for InnerDB {
     type Target = DB;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.db
     }
 }
 
 impl InnerDB {
-    pub fn new(db_path: PathBuf) -> Result<Self> {
+    pub fn new(db_path: PathBuf, mode: DBMode) -> Result<Self> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
@@ -61,14 +78,35 @@ impl InnerDB {
             db_path,
             vec![
                 METADATA,
-                STORAGE_LOGS,
-                FACTORY_DEPS,
                 INDEX_TO_KEY_MAP,
                 KEY_TO_INDEX_MAP,
+                snapshot_columns::STORAGE_LOGS,
+                snapshot_columns::FACTORY_DEPS,
             ],
         )?;
 
-        Ok(Self(db))
+        Ok(Self { db, mode })
+    }
+
+    pub fn new_read_only(db_path: PathBuf, mode: DBMode) -> Result<Self> {
+        let mut db_opts = Options::default();
+        db_opts.create_missing_column_families(true);
+        db_opts.create_if_missing(true);
+
+        let db = DB::open_cf_for_read_only(
+            &db_opts,
+            db_path,
+            vec![
+                METADATA,
+                INDEX_TO_KEY_MAP,
+                KEY_TO_INDEX_MAP,
+                snapshot_columns::STORAGE_LOGS,
+                snapshot_columns::FACTORY_DEPS,
+            ],
+            false,
+        )?;
+
+        Ok(Self { db, mode })
     }
 
     pub fn process_value(&self, key: U256, value: PackingType) -> Result<H256> {
@@ -95,46 +133,10 @@ impl InnerDB {
         Ok(H256::from(buffer))
     }
 
-    pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
-        let mut db_opts = Options::default();
-        db_opts.create_missing_column_families(true);
-        db_opts.create_if_missing(true);
-
-        let db = DB::open_cf_for_read_only(
-            &db_opts,
-            db_path,
-            vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
-            false,
-        )?;
-
-        Ok(Self(db))
-    }
-
-    pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        let batch = self.get_cf(metadata, LATEST_L1_BLOCK_NUMBER)?.map(|bytes| {
-            u64::from_be_bytes([
-                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-            ])
-        });
-
-        Ok(batch)
-    }
-
-    pub fn set_last_l1_batch_number(&self, batch_number: u64) -> Result<()> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        self.put_cf(metadata, LATEST_L1_BLOCK_NUMBER, batch_number.to_be_bytes())
-            .map_err(Into::into)
-    }
-
     pub fn get_storage_log(&self, key: &U256) -> Result<Option<SnapshotStorageLog>> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
         let mut byte_key = [0u8; 32];
         key.to_big_endian(&mut byte_key);
         self.get_cf(storage_logs, byte_key)
@@ -146,7 +148,7 @@ impl InnerDB {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
 
         let mut key: [u8; 32] = [0; 32];
         storage_log_entry.key.to_big_endian(&mut key);
@@ -175,7 +177,7 @@ impl InnerDB {
     pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
         let key = self.get_key_from_index(key_idx)?;
 
         // XXX: These should really be inside a transaction...
@@ -189,34 +191,49 @@ impl InnerDB {
     pub fn insert_factory_dep(&self, fdep: &SnapshotFactoryDependency) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let factory_deps = self.cf_handle(FACTORY_DEPS).unwrap();
+        let factory_deps = self.cf_handle(snapshot_columns::FACTORY_DEPS).unwrap();
         self.put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
             .map_err(Into::into)
     }
 
-    pub fn get_latest_l1_block_number(&self) -> Result<U64> {
-        self.get_metadata_value(LATEST_L1_BLOCK_NUMBER)
-            .map(U64::from)
+    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+        let column = match self.mode {
+            DBMode::Reconstruction => reconstruction_columns::LATEST_L1_BATCH,
+            DBMode::Snapshot => snapshot_columns::LATEST_L1_BATCH,
+        };
+        self.get_metadata_value(column).map(U64::from)
     }
 
-    pub fn set_latest_l1_block_number(&self, number: u64) -> Result<()> {
-        self.set_metadata_value(LATEST_L1_BLOCK_NUMBER, number)
+    pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
+        let column = match self.mode {
+            DBMode::Reconstruction => reconstruction_columns::LATEST_L1_BATCH,
+            DBMode::Snapshot => snapshot_columns::LATEST_L1_BATCH,
+        };
+        self.set_metadata_value(column, number)
     }
 
-    pub fn get_latest_l2_block_number(&self) -> Result<u64> {
-        self.get_metadata_value(LATEST_L2_BLOCK_NUMBER)
+    pub fn get_latest_l2_batch_number(&self) -> Result<u64> {
+        self.get_metadata_value(reconstruction_columns::LATEST_L2_BATCH)
     }
 
-    pub fn set_latest_l2_block_number(&self, number: u64) -> Result<()> {
-        self.set_metadata_value(LATEST_L2_BLOCK_NUMBER, number)
+    pub fn set_latest_l2_batch_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(reconstruction_columns::LATEST_L2_BATCH, number)
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        self.get_metadata_value(LAST_REPEATED_KEY_INDEX)
+        let column = match self.mode {
+            DBMode::Reconstruction => reconstruction_columns::LAST_REPEATED_KEY_INDEX,
+            DBMode::Snapshot => snapshot_columns::LAST_REPEATED_KEY_INDEX,
+        };
+        self.get_metadata_value(column)
     }
 
     pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
-        self.set_metadata_value(LAST_REPEATED_KEY_INDEX, idx)
+        let column = match self.mode {
+            DBMode::Reconstruction => reconstruction_columns::LAST_REPEATED_KEY_INDEX,
+            DBMode::Snapshot => snapshot_columns::LAST_REPEATED_KEY_INDEX,
+        };
+        self.set_metadata_value(column, idx)
     }
 
     fn get_metadata_value(&self, value_name: &str) -> Result<u64> {
@@ -285,7 +302,7 @@ mod tests {
     fn basics() {
         let db_dir = PathBuf::from("./test_inner_db");
         {
-            let db = InnerDB::new(db_dir.clone()).unwrap();
+            let db = InnerDB::new(db_dir.clone(), DBMode::default()).unwrap();
             let zero = db.get_last_repeated_key_index().unwrap();
             assert_eq!(zero, 0);
             db.set_last_repeated_key_index(1).unwrap();

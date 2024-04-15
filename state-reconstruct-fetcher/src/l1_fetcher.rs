@@ -73,7 +73,7 @@ pub struct L1Fetcher {
 }
 
 impl L1Fetcher {
-    pub fn new(config: L1FetcherOptions, snapshot: Option<Arc<Mutex<InnerDB>>>) -> Result<Self> {
+    pub fn new(config: L1FetcherOptions, inner_db: Option<Arc<Mutex<InnerDB>>>) -> Result<Self> {
         let provider = Provider::<Http>::try_from(&config.http_url)
             .expect("could not instantiate HTTP Provider");
 
@@ -87,7 +87,7 @@ impl L1Fetcher {
             provider,
             contracts,
             config,
-            inner_db: snapshot,
+            inner_db,
             metrics,
         })
     }
@@ -102,7 +102,7 @@ impl L1Fetcher {
         if current_l1_block_number == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.inner_db {
                 let snapshot_latest_l1_block_number =
-                    snapshot.lock().await.get_latest_l1_block_number()?;
+                    snapshot.lock().await.get_latest_l1_batch_number()?;
                 if snapshot_latest_l1_block_number > current_l1_block_number {
                     current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
@@ -124,7 +124,7 @@ impl L1Fetcher {
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
             if let Some(snapshot) = &self.inner_db {
-                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_block_number()?;
+                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_batch_number()?;
                 metrics.first_l2_block_num = metrics.latest_l2_block_num;
             }
         }
@@ -194,7 +194,7 @@ impl L1Fetcher {
                 snapshot
                     .lock()
                     .await
-                    .set_latest_l1_block_number(block_num)?;
+                    .set_latest_l1_batch_number(block_num)?;
             }
 
             // Fetching is naturally ahead of parsing, but the data
