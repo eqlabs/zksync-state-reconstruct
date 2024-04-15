@@ -24,7 +24,7 @@ pub struct V1 {
     pub priority_operations_hash: Vec<u8>,
     /// Storage write access as a concatenation key-value.
     #[serde(with = "any_key_map")]
-    pub initial_storage_changes: IndexMap<[u8; 32], [u8; 32]>,
+    pub initial_storage_changes: IndexMap<U256, [u8; 32]>,
     /// Storage write access as a concatenation index-value.
     #[serde(with = "any_key_map")]
     pub repeated_storage_changes: IndexMap<u64, [u8; 32]>,
@@ -111,6 +111,7 @@ impl TryFrom<&abi::Token> for V1 {
                 ));
             }
 
+            let key = U256::from_little_endian(&key);
             let _ = blk.initial_storage_changes.insert(key, value);
         }
 

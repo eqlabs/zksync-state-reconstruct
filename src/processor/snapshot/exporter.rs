@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use ethers::types::U64;
+use ethers::types::{U256, U64};
 use eyre::Result;
 
 use super::{
@@ -105,7 +105,8 @@ impl SnapshotExporter {
             let mut chunk = SnapshotStorageLogsChunk::default();
             for _ in 0..chunk_size {
                 if let Some(Ok((_, key))) = iterator.next() {
-                    if let Ok(Some(entry)) = self.database.get_storage_log(key.as_ref()) {
+                    let key = U256::from_big_endian(&key);
+                    if let Ok(Some(entry)) = self.database.get_storage_log(&key) {
                         chunk.storage_logs.push(entry);
                     }
                 } else {

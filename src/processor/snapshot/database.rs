@@ -52,9 +52,7 @@ impl SnapshotDB {
         let processed_value = match value {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
-                let mut buffer = [0; 32];
-                key.to_big_endian(&mut buffer);
-                let existing_value = if let Some(log) = self.get_storage_log(&buffer)? {
+                let existing_value = if let Some(log) = self.get_storage_log(&key)? {
                     U256::from(log.value.to_fixed_bytes())
                 } else {
                     U256::from(0)
@@ -141,11 +139,13 @@ impl SnapshotDB {
             .map_err(Into::into)
     }
 
-    pub fn get_storage_log(&self, key: &[u8]) -> Result<Option<SnapshotStorageLog>> {
+    pub fn get_storage_log(&self, key: &U256) -> Result<Option<SnapshotStorageLog>> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
-        self.get_cf(storage_logs, key)
+        let mut byte_key = [0u8; 32];
+        key.to_big_endian(&mut byte_key);
+        self.get_cf(storage_logs, byte_key)
             .map(|v| v.map(|v| bincode::deserialize(&v).unwrap()))
             .map_err(Into::into)
     }

@@ -87,7 +87,7 @@ pub struct CommitBlock {
     pub new_state_root: Vec<u8>,
     /// Storage write access as a concatenation key-value.
     #[serde(with = "any_key_map")]
-    pub initial_storage_changes: IndexMap<[u8; 32], PackingType>,
+    pub initial_storage_changes: IndexMap<U256, PackingType>,
     /// Storage write access as a concatenation index-value.
     #[serde(with = "any_key_map")]
     pub repeated_storage_changes: IndexMap<u64, PackingType>,
@@ -144,13 +144,10 @@ impl CommitBlock {
                             derived_key,
                             packing_type,
                         } => {
-                            let mut key = [0u8; 32];
-                            derived_key.to_big_endian(&mut key);
-
                             if is_repeated_write {
                                 repeated_storage_changes.insert(derived_key.as_u64(), packing_type);
                             } else {
-                                initial_storage_changes.insert(key, packing_type);
+                                initial_storage_changes.insert(derived_key, packing_type);
                             };
                         }
                     }
@@ -186,13 +183,10 @@ impl CommitBlock {
                     derived_key,
                     packing_type,
                 } => {
-                    let mut key = [0u8; 32];
-                    derived_key.to_big_endian(&mut key);
-
                     if is_repeated_write {
                         repeated_storage_changes.insert(derived_key.as_u64(), packing_type);
                     } else {
-                        initial_storage_changes.insert(key, packing_type);
+                        initial_storage_changes.insert(derived_key, packing_type);
                     };
                 }
             }
