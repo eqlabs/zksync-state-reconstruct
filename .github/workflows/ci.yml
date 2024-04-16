@@ -19,7 +19,7 @@ jobs:
           fmt --all --check,
           check --all-targets --all-features,
           clippy --all-targets --all-features -- -D warnings,
-          test --all-targets --all-features
+          test --all-targets --all-features --workspace
         ]
     steps:
       - uses: actions/checkout@v4
