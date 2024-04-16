@@ -4,10 +4,7 @@ use ethers::types::{U256, U64};
 use eyre::Result;
 use rocksdb::{Options, DB};
 
-use crate::{
-    reconstruction_columns, snapshot_columns, DatabaseError, INDEX_TO_KEY_MAP, KEY_TO_INDEX_MAP,
-    METADATA,
-};
+use crate::{reconstruction_columns, DatabaseError, INDEX_TO_KEY_MAP, KEY_TO_INDEX_MAP, METADATA};
 
 pub struct ReconstructionDatabase(DB);
 
@@ -29,13 +26,7 @@ impl ReconstructionDatabase {
         let db = DB::open_cf(
             &db_opts,
             db_path,
-            vec![
-                METADATA,
-                INDEX_TO_KEY_MAP,
-                KEY_TO_INDEX_MAP,
-                snapshot_columns::STORAGE_LOGS,
-                snapshot_columns::FACTORY_DEPS,
-            ],
+            vec![METADATA, INDEX_TO_KEY_MAP, KEY_TO_INDEX_MAP],
         )?;
 
         Ok(Self(db))
