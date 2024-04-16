@@ -1,5 +1,7 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
+use state_reconstruct_storage::snapshot::SnapshotDatabase;
+
 pub mod exporter;
 pub mod importer;
 
@@ -14,7 +16,6 @@ use state_reconstruct_fetcher::{
 use state_reconstruct_storage::{
     bytecode,
     types::{MiniblockNumber, SnapshotFactoryDependency, SnapshotStorageLog},
-    DBMode, InnerDB,
 };
 use tokio::sync::mpsc;
 
@@ -25,7 +26,7 @@ pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
 
 pub struct SnapshotBuilder {
-    database: InnerDB,
+    database: SnapshotDatabase,
 }
 
 impl SnapshotBuilder {
@@ -35,7 +36,7 @@ impl SnapshotBuilder {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let mut database = InnerDB::new(db_path, DBMode::Snapshot).unwrap();
+        let mut database = SnapshotDatabase::new(db_path).unwrap();
 
         let idx = database
             .get_last_repeated_key_index()
@@ -128,7 +129,7 @@ impl Processor for SnapshotBuilder {
 
 // TODO: Can this be made somewhat generic?
 /// Attempts to reconstruct the genesis state from a CSV file.
-fn reconstruct_genesis_state(database: &mut InnerDB, path: &str) -> Result<()> {
+fn reconstruct_genesis_state(database: &mut SnapshotDatabase, path: &str) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
         input
             .strip_prefix("E'\\\\x")
@@ -236,7 +237,7 @@ mod tests {
     use std::fs;
 
     use indexmap::IndexMap;
-    use state_reconstruct_storage::{DBMode, InnerDB, PackingType};
+    use state_reconstruct_storage::PackingType;
 
     use super::*;
 
@@ -271,7 +272,7 @@ mod tests {
             builder.run(rx).await;
         }
 
-        let db = InnerDB::new(PathBuf::from(db_dir.clone()), DBMode::Snapshot).unwrap();
+        let db = SnapshotDatabase::new(PathBuf::from(db_dir.clone())).unwrap();
 
         let key = U256::from_dec_str("1234").unwrap();
         let Some(log) = db.get_storage_log(&key).unwrap() else {

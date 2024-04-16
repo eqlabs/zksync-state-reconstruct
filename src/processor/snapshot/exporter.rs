@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 use ethers::types::U256;
 use eyre::Result;
 use state_reconstruct_storage::{
+    snapshot::SnapshotDatabase,
     snapshot_columns,
     types::{
         Proto, SnapshotFactoryDependencies, SnapshotFactoryDependency, SnapshotHeader,
         SnapshotStorageLogsChunk, SnapshotStorageLogsChunkMetadata,
     },
-    DBMode, InnerDB, INDEX_TO_KEY_MAP,
+    INDEX_TO_KEY_MAP,
 };
 
 use crate::processor::snapshot::{
@@ -17,7 +18,7 @@ use crate::processor::snapshot::{
 
 pub struct SnapshotExporter {
     basedir: PathBuf,
-    database: InnerDB,
+    database: SnapshotDatabase,
 }
 
 impl SnapshotExporter {
@@ -27,7 +28,7 @@ impl SnapshotExporter {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let database = InnerDB::new_read_only(db_path, DBMode::Snapshot)?;
+        let database = SnapshotDatabase::new_read_only(db_path)?;
         Ok(Self {
             basedir: basedir.to_path_buf(),
             database,

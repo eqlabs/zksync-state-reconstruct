@@ -4,7 +4,9 @@ use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
-use state_reconstruct_storage::{types::SnapshotStorageLogsChunk, InnerDB, PackingType};
+use state_reconstruct_storage::{
+    reconstruction::ReconstructionDatabase, types::SnapshotStorageLogsChunk, PackingType,
+};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
@@ -22,14 +24,14 @@ pub struct TreeWrapper {
     index_to_key: HashMap<u64, U256>,
     key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
-    inner_db: Arc<Mutex<InnerDB>>,
+    inner_db: Arc<Mutex<ReconstructionDatabase>>,
 }
 
 impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
     pub async fn new(
         db_path: &Path,
-        inner_db: Arc<Mutex<InnerDB>>,
+        inner_db: Arc<Mutex<ReconstructionDatabase>>,
         reconstruct: bool,
     ) -> Result<Self> {
         let db_opt = RocksDBOptions {
@@ -199,7 +201,7 @@ impl TreeWrapper {
 /// Attempts to reconstruct the genesis state from a CSV file.
 fn reconstruct_genesis_state<D: Database>(
     tree: &mut MerkleTree<D>,
-    snapshot: &mut InnerDB,
+    snapshot: &mut ReconstructionDatabase,
     path: &str,
 ) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {

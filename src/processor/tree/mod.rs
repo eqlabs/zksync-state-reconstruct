@@ -11,7 +11,7 @@ use state_reconstruct_fetcher::{
     metrics::{PerfMetric, METRICS_TRACING_TARGET},
     types::CommitBlock,
 };
-use state_reconstruct_storage::{DBMode::Reconstruction, InnerDB};
+use state_reconstruct_storage::reconstruction::ReconstructionDatabase;
 use tokio::{
     sync::{mpsc, Mutex},
     time::Instant,
@@ -26,7 +26,7 @@ pub struct TreeProcessor {
     /// The internal merkle tree.
     tree: TreeWrapper,
     /// The stored state snapshot.
-    inner_db: Arc<Mutex<InnerDB>>,
+    inner_db: Arc<Mutex<ReconstructionDatabase>>,
 }
 
 impl TreeProcessor {
@@ -46,14 +46,14 @@ impl TreeProcessor {
             );
         }
 
-        let new_state = InnerDB::new(inner_db_path.clone(), Reconstruction)?;
+        let new_state = ReconstructionDatabase::new(inner_db_path.clone())?;
         let inner_db = Arc::new(Mutex::new(new_state));
         let tree = TreeWrapper::new(&db_path, inner_db.clone(), init).await?;
 
         Ok(Self { tree, inner_db })
     }
 
-    pub fn get_inner_db(&self) -> Arc<Mutex<InnerDB>> {
+    pub fn get_inner_db(&self) -> Arc<Mutex<ReconstructionDatabase>> {
         self.inner_db.clone()
     }
 }

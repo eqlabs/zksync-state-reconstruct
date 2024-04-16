@@ -7,7 +7,7 @@ use ethers::{
 };
 use eyre::Result;
 use rand::random;
-use state_reconstruct_storage::InnerDB;
+use state_reconstruct_storage::reconstruction::ReconstructionDatabase;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -68,12 +68,15 @@ pub struct L1Fetcher {
     provider: Provider<Http>,
     contracts: Contracts,
     config: L1FetcherOptions,
-    inner_db: Option<Arc<Mutex<InnerDB>>>,
+    inner_db: Option<Arc<Mutex<ReconstructionDatabase>>>,
     metrics: Arc<Mutex<L1Metrics>>,
 }
 
 impl L1Fetcher {
-    pub fn new(config: L1FetcherOptions, inner_db: Option<Arc<Mutex<InnerDB>>>) -> Result<Self> {
+    pub fn new(
+        config: L1FetcherOptions,
+        inner_db: Option<Arc<Mutex<ReconstructionDatabase>>>,
+    ) -> Result<Self> {
         let provider = Provider::<Http>::try_from(&config.http_url)
             .expect("could not instantiate HTTP Provider");
 
