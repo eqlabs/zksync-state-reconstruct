@@ -4,11 +4,15 @@ use std::{
     sync::Arc,
 };
 
+use ethers::types::U64;
 use eyre::Result;
 use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
 use state_reconstruct_storage::{
     reconstruction::ReconstructionDatabase,
-    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
+    types::{
+        Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
+        SnapshotStorageLogsChunkMetadata,
+    },
 };
 use tokio::sync::Mutex;
 
@@ -44,8 +48,49 @@ impl SnapshotImporter {
 
     fn read_header(&self) -> Result<SnapshotHeader> {
         let header_path = self.directory.join(SNAPSHOT_HEADER_FILE_NAME);
-        let header_string = fs::read_to_string(header_path)?;
-        let header: SnapshotHeader = serde_json::from_str(&header_string)?;
+
+        let header = if let Ok(string) = fs::read_to_string(header_path) {
+            serde_json::from_str(&string)?
+        } else {
+            let mut l1_batch_number = U64::from(0);
+            let mut storage_logs_chunks = Vec::new();
+            let mut factory_deps_filepath = String::new();
+
+            let mut chunk_id = 0;
+            for file in self.directory.read_dir()? {
+                let file_name = file?
+                    .file_name()
+                    .to_str()
+                    .expect("invalid filename")
+                    .to_string();
+
+                if file_name.contains("storage_logs_part") {
+                    // Procure l1 batch number from file name.
+                    let number: usize = file_name
+                        .split('_')
+                        .nth(3)
+                        .expect("invalid storage logs part filename")
+                        .parse()?;
+                    l1_batch_number = U64::from(number);
+
+                    // Add the storage log parts filename to header.
+                    let chunk_metadata = SnapshotStorageLogsChunkMetadata {
+                        chunk_id,
+                        filepath: file_name,
+                    };
+                    storage_logs_chunks.push(chunk_metadata);
+                    chunk_id += 1;
+                } else if file_name.contains("factory_deps") {
+                    factory_deps_filepath = file_name;
+                }
+            }
+            SnapshotHeader {
+                l1_batch_number,
+                storage_logs_chunks,
+                factory_deps_filepath,
+                ..Default::default()
+            }
+        };
 
         Ok(header)
     }
