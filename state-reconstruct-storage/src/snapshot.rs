@@ -1,31 +1,18 @@
 use std::{ops::Deref, path::PathBuf};
 
-use ethers::types::{H256, U256};
+use ethers::types::{H256, U256, U64};
 use eyre::Result;
 use rocksdb::{Options, DB};
-use state_reconstruct_fetcher::types::PackingType;
-use thiserror::Error;
 
-use super::types::{SnapshotFactoryDependency, SnapshotStorageLog};
+use crate::{
+    snapshot_columns,
+    types::{SnapshotFactoryDependency, SnapshotStorageLog},
+    DatabaseError, PackingType, INDEX_TO_KEY_MAP, KEY_TO_INDEX_MAP, METADATA,
+};
 
-pub const STORAGE_LOGS: &str = "storage_logs";
-pub const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
-pub const FACTORY_DEPS: &str = "factory_deps";
-const METADATA: &str = "metadata";
+pub struct SnapshotDatabase(DB);
 
-const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
-const LAST_L1_BATCH_NUMBER: &str = "LAST_L1_BATCH_NUMBER";
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Error, Debug)]
-pub enum DatabaseError {
-    #[error("no such key")]
-    NoSuchKey,
-}
-
-pub struct SnapshotDB(DB);
-
-impl Deref for SnapshotDB {
+impl Deref for SnapshotDatabase {
     type Target = DB;
 
     fn deref(&self) -> &Self::Target {
@@ -33,16 +20,44 @@ impl Deref for SnapshotDB {
     }
 }
 
-impl SnapshotDB {
+impl SnapshotDatabase {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
+        db_opts.set_max_open_files(1024);
 
         let db = DB::open_cf(
             &db_opts,
             db_path,
-            vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
+            vec![
+                METADATA,
+                INDEX_TO_KEY_MAP,
+                KEY_TO_INDEX_MAP,
+                snapshot_columns::STORAGE_LOGS,
+                snapshot_columns::FACTORY_DEPS,
+            ],
+        )?;
+
+        Ok(Self(db))
+    }
+
+    pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
+        let mut db_opts = Options::default();
+        db_opts.create_missing_column_families(true);
+        db_opts.create_if_missing(true);
+
+        let db = DB::open_cf_for_read_only(
+            &db_opts,
+            db_path,
+            vec![
+                METADATA,
+                INDEX_TO_KEY_MAP,
+                KEY_TO_INDEX_MAP,
+                snapshot_columns::STORAGE_LOGS,
+                snapshot_columns::FACTORY_DEPS,
+            ],
+            false,
         )?;
 
         Ok(Self(db))
@@ -72,77 +87,10 @@ impl SnapshotDB {
         Ok(H256::from(buffer))
     }
 
-    pub fn new_read_only(db_path: PathBuf) -> Result<Self> {
-        let mut db_opts = Options::default();
-        db_opts.create_missing_column_families(true);
-        db_opts.create_if_missing(true);
-
-        let db = DB::open_cf_for_read_only(
-            &db_opts,
-            db_path,
-            vec![METADATA, STORAGE_LOGS, INDEX_TO_KEY_MAP, FACTORY_DEPS],
-            false,
-        )?;
-
-        Ok(Self(db))
-    }
-
-    pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        Ok(
-            if let Some(idx_bytes) = self.get_cf(metadata, LAST_REPEATED_KEY_INDEX)? {
-                u64::from_be_bytes([
-                    idx_bytes[0],
-                    idx_bytes[1],
-                    idx_bytes[2],
-                    idx_bytes[3],
-                    idx_bytes[4],
-                    idx_bytes[5],
-                    idx_bytes[6],
-                    idx_bytes[7],
-                ])
-            } else {
-                self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, u64::to_be_bytes(0))?;
-                0
-            },
-        )
-    }
-
-    pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        self.put_cf(metadata, LAST_REPEATED_KEY_INDEX, idx.to_be_bytes())
-            .map_err(Into::into)
-    }
-
-    pub fn get_last_l1_batch_number(&self) -> Result<Option<u64>> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        let batch = self.get_cf(metadata, LAST_L1_BATCH_NUMBER)?.map(|bytes| {
-            u64::from_be_bytes([
-                bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-            ])
-        });
-
-        Ok(batch)
-    }
-
-    pub fn set_last_l1_batch_number(&self, batch_number: u64) -> Result<()> {
-        // Unwrapping column family handle here is safe because presence of
-        // those CFs is ensured in construction of this DB.
-        let metadata = self.cf_handle(METADATA).unwrap();
-        self.put_cf(metadata, LAST_L1_BATCH_NUMBER, batch_number.to_be_bytes())
-            .map_err(Into::into)
-    }
-
     pub fn get_storage_log(&self, key: &U256) -> Result<Option<SnapshotStorageLog>> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
         let mut byte_key = [0u8; 32];
         key.to_big_endian(&mut byte_key);
         self.get_cf(storage_logs, byte_key)
@@ -154,7 +102,7 @@ impl SnapshotDB {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let index_to_key_map = self.cf_handle(INDEX_TO_KEY_MAP).unwrap();
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
 
         let mut key: [u8; 32] = [0; 32];
         storage_log_entry.key.to_big_endian(&mut key);
@@ -183,7 +131,7 @@ impl SnapshotDB {
     pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let storage_logs = self.cf_handle(STORAGE_LOGS).unwrap();
+        let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
         let key = self.get_key_from_index(key_idx)?;
 
         // XXX: These should really be inside a transaction...
@@ -197,8 +145,72 @@ impl SnapshotDB {
     pub fn insert_factory_dep(&self, fdep: &SnapshotFactoryDependency) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
-        let factory_deps = self.cf_handle(FACTORY_DEPS).unwrap();
+        let factory_deps = self.cf_handle(snapshot_columns::FACTORY_DEPS).unwrap();
         self.put_cf(factory_deps, fdep.bytecode_hash, bincode::serialize(&fdep)?)
             .map_err(Into::into)
+    }
+
+    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+        self.get_metadata_value(snapshot_columns::LATEST_L1_BATCH)
+            .map(U64::from)
+    }
+
+    pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(snapshot_columns::LATEST_L1_BATCH, number)
+    }
+
+    pub fn get_last_repeated_key_index(&self) -> Result<u64> {
+        self.get_metadata_value(snapshot_columns::LAST_REPEATED_KEY_INDEX)
+    }
+
+    pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
+        self.set_metadata_value(snapshot_columns::LAST_REPEATED_KEY_INDEX, idx)
+    }
+
+    fn get_metadata_value(&self, value_name: &str) -> Result<u64> {
+        let metadata = self.cf_handle(METADATA).unwrap();
+        Ok(
+            if let Some(idx_bytes) = self.get_cf(metadata, value_name)? {
+                u64::from_be_bytes([
+                    idx_bytes[0],
+                    idx_bytes[1],
+                    idx_bytes[2],
+                    idx_bytes[3],
+                    idx_bytes[4],
+                    idx_bytes[5],
+                    idx_bytes[6],
+                    idx_bytes[7],
+                ])
+            } else {
+                0
+            },
+        )
+    }
+
+    fn set_metadata_value(&self, value_name: &str, value: u64) -> Result<()> {
+        let metadata = self.cf_handle(METADATA).unwrap();
+        self.put_cf(metadata, value_name, value.to_be_bytes())
+            .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn basics() {
+        let db_dir = PathBuf::from("./test_inner_db");
+        {
+            let db = SnapshotDatabase::new(db_dir.clone()).unwrap();
+            let zero = db.get_last_repeated_key_index().unwrap();
+            assert_eq!(zero, 0);
+            db.set_last_repeated_key_index(1).unwrap();
+            let one = db.get_last_repeated_key_index().unwrap();
+            assert_eq!(one, 1);
+        }
+        fs::remove_dir_all(db_dir).unwrap();
     }
 }

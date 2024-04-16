@@ -7,6 +7,7 @@ use ethers::{
 };
 use eyre::Result;
 use rand::random;
+use state_reconstruct_storage::reconstruction::ReconstructionDatabase;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, Mutex},
@@ -18,7 +19,6 @@ use crate::{
     api_support::ApiSupport,
     blob_http_client::BlobHttpClient,
     constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
-    database::InnerDB,
     metrics::L1Metrics,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -68,12 +68,15 @@ pub struct L1Fetcher {
     provider: Provider<Http>,
     contracts: Contracts,
     config: L1FetcherOptions,
-    snapshot: Option<Arc<Mutex<InnerDB>>>,
+    inner_db: Option<Arc<Mutex<ReconstructionDatabase>>>,
     metrics: Arc<Mutex<L1Metrics>>,
 }
 
 impl L1Fetcher {
-    pub fn new(config: L1FetcherOptions, snapshot: Option<Arc<Mutex<InnerDB>>>) -> Result<Self> {
+    pub fn new(
+        config: L1FetcherOptions,
+        inner_db: Option<Arc<Mutex<ReconstructionDatabase>>>,
+    ) -> Result<Self> {
         let provider = Provider::<Http>::try_from(&config.http_url)
             .expect("could not instantiate HTTP Provider");
 
@@ -87,7 +90,7 @@ impl L1Fetcher {
             provider,
             contracts,
             config,
-            snapshot,
+            inner_db,
             metrics,
         })
     }
@@ -100,9 +103,9 @@ impl L1Fetcher {
         // User might have supplied their own start block, in that case we shouldn't enforce the
         // use of the snapshot value.
         if current_l1_block_number == GENESIS_BLOCK.into() {
-            if let Some(snapshot) = &self.snapshot {
+            if let Some(snapshot) = &self.inner_db {
                 let snapshot_latest_l1_block_number =
-                    snapshot.lock().await.get_latest_l1_block_number()?;
+                    snapshot.lock().await.get_latest_l1_batch_number()?;
                 if snapshot_latest_l1_block_number > current_l1_block_number {
                     current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
@@ -123,8 +126,8 @@ impl L1Fetcher {
             metrics.initial_l1_block = self.config.start_block;
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
-            if let Some(snapshot) = &self.snapshot {
-                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_block_number()?;
+            if let Some(snapshot) = &self.inner_db {
+                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_batch_number()?;
                 metrics.first_l2_block_num = metrics.latest_l2_block_num;
             }
         }
@@ -190,11 +193,11 @@ impl L1Fetcher {
         // Store our current L1 block number so we can resume from where we left
         // off, we also make sure to update the metrics before printing them.
         if let Some(block_num) = last_processed_l1_block_num {
-            if let Some(snapshot) = &self.snapshot {
+            if let Some(snapshot) = &self.inner_db {
                 snapshot
                     .lock()
                     .await
-                    .set_latest_l1_block_number(block_num)?;
+                    .set_latest_l1_batch_number(block_num)?;
             }
 
             // Fetching is naturally ahead of parsing, but the data

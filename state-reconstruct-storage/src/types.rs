@@ -11,13 +11,17 @@ use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
-use super::{bytecode, protobuf};
+use super::bytecode;
 
 pub type L1BatchNumber = U64;
 pub type MiniblockNumber = U64;
 
 pub type StorageKey = U256;
 pub type StorageValue = H256;
+
+pub mod protobuf {
+    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
+}
 
 pub trait Proto {
     type ProtoStruct: Message + Default;

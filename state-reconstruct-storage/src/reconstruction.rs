@@ -3,27 +3,12 @@ use std::{ops::Deref, path::PathBuf};
 use ethers::types::{U256, U64};
 use eyre::Result;
 use rocksdb::{Options, DB};
-use thiserror::Error;
 
-const INDEX_TO_KEY_MAP: &str = "index_to_key_map";
-const KEY_TO_INDEX_MAP: &str = "key_to_index_map";
-const METADATA: &str = "metadata";
+use crate::{reconstruction_columns, DatabaseError, INDEX_TO_KEY_MAP, KEY_TO_INDEX_MAP, METADATA};
 
-const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
-/// The latest l1 block number that was processed.
-const LATEST_L1_BLOCK_NUMBER: &str = "LATEST_L1_BLOCK_NUMBER";
-/// The latest l2 block number that was processed.
-const LATEST_L2_BLOCK_NUMBER: &str = "LATEST_L2_BLOCK_NUMBER";
+pub struct ReconstructionDatabase(DB);
 
-#[derive(Error, Debug)]
-pub enum DatabaseError {
-    #[error("key not found")]
-    NoSuchKey,
-}
-
-pub struct InnerDB(DB);
-
-impl Deref for InnerDB {
+impl Deref for ReconstructionDatabase {
     type Target = DB;
 
     fn deref(&self) -> &Self::Target {
@@ -31,7 +16,7 @@ impl Deref for InnerDB {
     }
 }
 
-impl InnerDB {
+impl ReconstructionDatabase {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
@@ -47,29 +32,29 @@ impl InnerDB {
         Ok(Self(db))
     }
 
-    pub fn get_latest_l1_block_number(&self) -> Result<U64> {
-        self.get_metadata_value(LATEST_L1_BLOCK_NUMBER)
+    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+        self.get_metadata_value(reconstruction_columns::LATEST_L1_BATCH)
             .map(U64::from)
     }
 
-    pub fn set_latest_l1_block_number(&self, number: u64) -> Result<()> {
-        self.set_metadata_value(LATEST_L1_BLOCK_NUMBER, number)
+    pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(reconstruction_columns::LATEST_L1_BATCH, number)
     }
 
-    pub fn get_latest_l2_block_number(&self) -> Result<u64> {
-        self.get_metadata_value(LATEST_L2_BLOCK_NUMBER)
+    pub fn get_latest_l2_batch_number(&self) -> Result<u64> {
+        self.get_metadata_value(reconstruction_columns::LATEST_L2_BATCH)
     }
 
-    pub fn set_latest_l2_block_number(&self, number: u64) -> Result<()> {
-        self.set_metadata_value(LATEST_L2_BLOCK_NUMBER, number)
+    pub fn set_latest_l2_batch_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(reconstruction_columns::LATEST_L2_BATCH, number)
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
-        self.get_metadata_value(LAST_REPEATED_KEY_INDEX)
+        self.get_metadata_value(reconstruction_columns::LAST_REPEATED_KEY_INDEX)
     }
 
     pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
-        self.set_metadata_value(LAST_REPEATED_KEY_INDEX, idx)
+        self.set_metadata_value(reconstruction_columns::LAST_REPEATED_KEY_INDEX, idx)
     }
 
     fn get_metadata_value(&self, value_name: &str) -> Result<u64> {
@@ -138,7 +123,7 @@ mod tests {
     fn basics() {
         let db_dir = PathBuf::from("./test_inner_db");
         {
-            let db = InnerDB::new(db_dir.clone()).unwrap();
+            let db = ReconstructionDatabase::new(db_dir.clone()).unwrap();
             let zero = db.get_last_repeated_key_index().unwrap();
             assert_eq!(zero, 0);
             db.set_last_repeated_key_index(1).unwrap();

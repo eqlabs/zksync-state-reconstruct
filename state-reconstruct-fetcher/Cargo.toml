@@ -23,3 +23,4 @@ rocksdb = "0.21.0"
 hex = "0.4.3"
 chrono = "0.4.31"
 zkevm_circuits = { git = "https://github.com/matter-labs/era-zkevm_circuits", branch = "v1.4.1" }
+state-reconstruct-storage = { path = "../state-reconstruct-storage" }

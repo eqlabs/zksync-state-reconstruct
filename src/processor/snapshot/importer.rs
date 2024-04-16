@@ -5,13 +5,14 @@ use std::{
 };
 
 use eyre::Result;
-use state_reconstruct_fetcher::{constants::storage::INNER_DB_NAME, database::InnerDB};
+use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
+use state_reconstruct_storage::{
+    reconstruction::ReconstructionDatabase,
+    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
+};
 use tokio::sync::Mutex;
 
-use super::{
-    types::{Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk},
-    SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
-};
+use super::{SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME};
 use crate::processor::tree::tree_wrapper::TreeWrapper;
 
 pub struct SnapshotImporter {
@@ -24,7 +25,7 @@ pub struct SnapshotImporter {
 impl SnapshotImporter {
     pub async fn new(directory: PathBuf, db_path: &Path) -> Result<Self> {
         let inner_db_path = db_path.join(INNER_DB_NAME);
-        let new_state = InnerDB::new(inner_db_path.clone())?;
+        let new_state = ReconstructionDatabase::new(inner_db_path.clone())?;
         let snapshot = Arc::new(Mutex::new(new_state));
         let tree = TreeWrapper::new(db_path, snapshot.clone(), true).await?;
 

@@ -1,20 +1,24 @@
 use std::path::{Path, PathBuf};
 
-use ethers::types::{U256, U64};
+use ethers::types::U256;
 use eyre::Result;
-
-use super::{
-    database::{self, SnapshotDB},
-    types::{SnapshotFactoryDependency, SnapshotHeader},
-    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
+use state_reconstruct_storage::{
+    snapshot::SnapshotDatabase,
+    snapshot_columns,
+    types::{
+        Proto, SnapshotFactoryDependencies, SnapshotFactoryDependency, SnapshotHeader,
+        SnapshotStorageLogsChunk, SnapshotStorageLogsChunkMetadata,
+    },
+    INDEX_TO_KEY_MAP,
 };
-use crate::processor::snapshot::types::{
-    Proto, SnapshotFactoryDependencies, SnapshotStorageLogsChunk, SnapshotStorageLogsChunkMetadata,
+
+use crate::processor::snapshot::{
+    DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
 
 pub struct SnapshotExporter {
     basedir: PathBuf,
-    database: SnapshotDB,
+    database: SnapshotDatabase,
 }
 
 impl SnapshotExporter {
@@ -24,7 +28,7 @@ impl SnapshotExporter {
             None => PathBuf::from(DEFAULT_DB_PATH),
         };
 
-        let database = SnapshotDB::new_read_only(db_path)?;
+        let database = SnapshotDatabase::new_read_only(db_path)?;
         Ok(Self {
             basedir: basedir.to_path_buf(),
             database,
@@ -32,12 +36,7 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, chunk_size: u64) -> Result<()> {
-        let l1_batch_number = U64::from(
-            self.database
-                .get_last_l1_batch_number()?
-                .expect("snapshot db contains no L1 batch number"),
-        );
-
+        let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number,
             ..Default::default()
@@ -61,7 +60,10 @@ impl SnapshotExporter {
     fn export_factory_deps(&self, header: &mut SnapshotHeader) -> Result<()> {
         tracing::info!("Exporting factory dependencies...");
 
-        let storage_logs = self.database.cf_handle(database::FACTORY_DEPS).unwrap();
+        let storage_logs = self
+            .database
+            .cf_handle(snapshot_columns::FACTORY_DEPS)
+            .unwrap();
         let mut iterator = self
             .database
             .iterator_cf(storage_logs, rocksdb::IteratorMode::Start);
@@ -93,7 +95,7 @@ impl SnapshotExporter {
         let num_logs = self.database.get_last_repeated_key_index()?;
         tracing::info!("Found {num_logs} logs.");
 
-        let index_to_key_map = self.database.cf_handle(database::INDEX_TO_KEY_MAP).unwrap();
+        let index_to_key_map = self.database.cf_handle(INDEX_TO_KEY_MAP).unwrap();
         let mut iterator = self
             .database
             .iterator_cf(index_to_key_map, rocksdb::IteratorMode::Start);

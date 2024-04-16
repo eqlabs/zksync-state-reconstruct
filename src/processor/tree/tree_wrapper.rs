@@ -3,10 +3,9 @@ use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, s
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
-use state_reconstruct_fetcher::{
-    constants::storage::INITAL_STATE_PATH,
-    database::InnerDB,
-    types::{CommitBlock, PackingType},
+use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
+use state_reconstruct_storage::{
+    reconstruction::ReconstructionDatabase, types::SnapshotStorageLogsChunk, PackingType,
 };
 use thiserror::Error;
 use tokio::sync::Mutex;
@@ -14,7 +13,6 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
-use crate::processor::snapshot::types::SnapshotStorageLogsChunk;
 
 #[derive(Error, Debug)]
 pub enum TreeError {
@@ -26,14 +24,14 @@ pub struct TreeWrapper {
     index_to_key: HashMap<u64, U256>,
     key_to_value: HashMap<U256, H256>,
     tree: MerkleTree<RocksDBWrapper>,
-    snapshot: Arc<Mutex<InnerDB>>,
+    inner_db: Arc<Mutex<ReconstructionDatabase>>,
 }
 
 impl TreeWrapper {
     /// Attempts to create a new [`TreeWrapper`].
     pub async fn new(
         db_path: &Path,
-        snapshot: Arc<Mutex<InnerDB>>,
+        inner_db: Arc<Mutex<ReconstructionDatabase>>,
         reconstruct: bool,
     ) -> Result<Self> {
         let db_opt = RocksDBOptions {
@@ -44,7 +42,7 @@ impl TreeWrapper {
         let mut tree = MerkleTree::new(db);
 
         if reconstruct {
-            let mut guard = snapshot.lock().await;
+            let mut guard = inner_db.lock().await;
             reconstruct_genesis_state(&mut tree, &mut guard, INITAL_STATE_PATH)?;
         }
 
@@ -52,7 +50,7 @@ impl TreeWrapper {
             index_to_key: HashMap::new(),
             key_to_value: HashMap::new(),
             tree,
-            snapshot,
+            inner_db,
         })
     }
 
@@ -68,7 +66,7 @@ impl TreeWrapper {
             let value = self.process_value(*key, *value);
 
             tree_entries.push(TreeEntry::new(*key, index, value));
-            self.snapshot
+            self.inner_db
                 .lock()
                 .await
                 .add_key(key)
@@ -81,7 +79,7 @@ impl TreeWrapper {
             let index = *index;
             // Index is 1-based so we subtract 1.
             let key = self
-                .snapshot
+                .inner_db
                 .lock()
                 .await
                 .get_key(index - 1)
@@ -135,7 +133,7 @@ impl TreeWrapper {
 
             for log in &chunk.storage_logs {
                 tree_entries.push(TreeEntry::new(log.key, log.enumeration_index, log.value));
-                self.snapshot
+                self.inner_db
                     .lock()
                     .await
                     .add_key(&log.key)
@@ -151,8 +149,8 @@ impl TreeWrapper {
 
         tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
 
-        let snapshot = self.snapshot.lock().await;
-        snapshot.set_latest_l1_block_number(l1_batch_number.as_u64() + 1)?;
+        let db = self.inner_db.lock().await;
+        db.set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
 
         Ok(())
     }
@@ -203,7 +201,7 @@ impl TreeWrapper {
 /// Attempts to reconstruct the genesis state from a CSV file.
 fn reconstruct_genesis_state<D: Database>(
     tree: &mut MerkleTree<D>,
-    snapshot: &mut InnerDB,
+    snapshot: &mut ReconstructionDatabase,
     path: &str,
 ) -> Result<()> {
     fn cleanup_encoding(input: &'_ str) -> &'_ str {
