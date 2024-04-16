@@ -119,9 +119,11 @@ mod tests {
 
     use super::*;
 
+    const TEST_DB_PATH: &str = "snapshot_test_db";
+
     #[test]
     fn basics() {
-        let db_dir = PathBuf::from("./test_inner_db");
+        let db_dir = PathBuf::from(TEST_DB_PATH);
         {
             let db = ReconstructionDatabase::new(db_dir.clone()).unwrap();
             let zero = db.get_last_repeated_key_index().unwrap();
