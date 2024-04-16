@@ -12,11 +12,11 @@ pub const KEY_TO_INDEX_MAP: &str = "key_to_index_map";
 pub const METADATA: &str = "metadata";
 
 pub mod reconstruction_columns {
-    pub const LAST_REPEATED_KEY_INDEX: &str = "RECONSTRUCTION_LAST_REPEATED_KEY_INDEX";
+    pub const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
     /// The latest l1 block number that was processed.
-    pub const LATEST_L1_BATCH: &str = "RECONSTRUCTION_LATEST_L1_BATCH";
+    pub const LATEST_L1_BATCH: &str = "LATEST_L1_BLOCK_NUMBER";
     /// The latest l2 block number that was processed.
-    pub const LATEST_L2_BATCH: &str = "RECONSTRUCTION_LATEST_L2_BATCH";
+    pub const LATEST_L2_BATCH: &str = "LATEST_L2_BLOCK_NUMBER";
 }
 
 pub mod snapshot_columns {
