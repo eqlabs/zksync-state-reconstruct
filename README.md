@@ -1,5 +1,9 @@
 # zkSync State Reconstruction Tool
 
+> Tool to reconstruct zkSync state from commit blocks published on L1.
+
+## Table of contents
+
 <!--toc:start-->
 - [zkSync State Reconstruction Tool](#zksync-state-reconstruction-tool)
   - [Prerequisites & setup](#prerequisites--setup)
@@ -10,8 +14,6 @@
       - [Importing snapshots](#importing-snapshots)
     - [Additional commands](#additional-commands)
 <!--toc:end-->
-
-> Tool / Library to reconstruct zkSync state from commit blocks published on L1
 
 ## Prerequisites & setup
 
