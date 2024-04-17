@@ -151,9 +151,12 @@ zkSync state reconstruction tool
 Usage: state-reconstruct <COMMAND>
 
 Commands:
-  reconstruct  Reconstruct L2 state from a source
-  query        Query the local storage, and optionally, return a JSON-payload of the data
-  help         Print this message or the help of the given subcommand(s)
+  download          Download L2 state from L1 to JSON file
+  reconstruct       Reconstruct L2 state from a source
+  query             Query the local storage, and optionally, return a JSON-payload of the data
+  prepare-snapshot
+  export-snapshot
+  help              Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -175,6 +178,7 @@ Commands:
   help  Print this message or the help of the given subcommand(s)
 
 Options:
-  -d, --db-path <DB_PATH>  The path to the storage solution [env: ZK_SYNC_DB_PATH=]
-  -h, --help               Print help
+  -d, --db-path <DB_PATH>    The path to the storage solution [env: ZK_SYNC_DB_PATH=]
+      --snapshot <SNAPSHOT>  If present, try to restore state from snapshot files contained in the specified directory. Note that this will only work when supplied with a fresh database
+  -h, --help                 Print help
 ```
