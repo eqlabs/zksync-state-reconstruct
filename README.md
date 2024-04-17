@@ -4,6 +4,10 @@
 - [zkSync State Reconstruction Tool](#zksync-state-reconstruction-tool)
   - [Prerequisites & setup](#prerequisites--setup)
   - [Usage](#usage)
+    - [Reconstruction](#reconstruction)
+    - [Snapshots](#snapshots)
+      - [Generating snapshots](#generating-snapshots)
+      - [Importing snapshots](#importing-snapshots)
     - [Additional commands](#additional-commands)
 <!--toc:end-->
 
@@ -75,6 +79,8 @@ brew install protobuf
 
 ## Usage
 
+### Reconstruction
+
 To start reconstructing the state, run the following command with any valid HTTP/HTTPS Ethereum JSON-RPC endpoint, for example using `https://eth.llamarpc.com`:
 
 ```fish
@@ -103,6 +109,35 @@ Metrics reference:
 
 - `CUR BLOCK`: The last block height that was processed.
 - `TOTAL BLOCKS PROCESSED`: The total number of blocks that has been processed since starting.
+
+### Snapshots
+
+Additionally, the state reconstruction tool provides ways to interact with the upcoming [zkSync Era](https://github.com/matter-labs/zksync-era) snapshot system.
+
+#### Generating snapshots
+
+Before being able to generate snapshots, it is necessary to first fetch the data from L1 and process it. This can be done by running the following command which will also show progress similarly to when reconstructing state from L1.
+
+```fish
+cargo run -- prepare-snapshot --http-url https://eth.llamarpc.com
+```
+
+Once the tool has gathered a number of storage logs, snapshots can then be exported by using the following command, specifying where to export the snapshot directory to.
+
+```fish
+cargo run -- export-snapshot <DIRECTORY>
+```
+
+#### Importing snapshots
+
+Snapshots can also be imported directly to use as a base when reconstructing the state from L1. This can be done by using the `--snapshot <DIRECTORY>` argument when starting reconstruction, like so:
+
+> [!WARNING]
+> Importing a snapshot when reconstruction has progressed further than the snapshot has the same effect as truncating the reconstructed state to that of the snapshot.
+
+```fish
+cargo run -- reconstruct --snapshot <DIRECTORY> l1 --http-url <HTTP-URL>
+```
 
 ### Additional commands
 
