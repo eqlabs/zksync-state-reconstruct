@@ -17,3 +17,6 @@ StateSnapshot.json
 # Direnv files.
 .direnv/
 .envrc
+
+# Markdown linting rules.
+.markdownlint.json
