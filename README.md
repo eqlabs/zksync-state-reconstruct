@@ -84,7 +84,7 @@ brew install protobuf
 To start reconstructing the state, run the following command with any valid HTTP/HTTPS Ethereum JSON-RPC endpoint, for example using `https://eth.llamarpc.com`:
 
 ```fish
-cargo run -- reconstruct l1 --http-url https://eth.llamarpc.com
+cargo run --release -- reconstruct l1 --http-url https://eth.llamarpc.com
 ```
 
 Once the tool is running it will continuously output the state reconstruction progress in the following format:
@@ -99,7 +99,7 @@ Once the tool is running it will continuously output the state reconstruction pr
 On each block insert, the tool will compare the new state root hash with that published on L1. Should they differ, the tool will panic. You can then use the `query` command to get additional information, as such:
 
 ```fish
-cargo run -- query root-hash
+cargo run --release -- query root-hash
 
 Batch: <BATCH NUMBER where hash deviated>
 Root Hash: <ROOT HASH of the local state tree>
@@ -119,13 +119,13 @@ Additionally, the state reconstruction tool provides ways to interact with the u
 Before being able to generate snapshots, it is necessary to first fetch the data from L1 and process it. This can be done by running the following command which will also show progress similarly to when reconstructing state from L1.
 
 ```fish
-cargo run -- prepare-snapshot --http-url https://eth.llamarpc.com
+cargo run --release -- prepare-snapshot --http-url https://eth.llamarpc.com
 ```
 
 Once the tool has gathered a number of storage logs, snapshots can then be exported by using the following command, specifying where to export the snapshot directory to.
 
 ```fish
-cargo run -- export-snapshot <DIRECTORY>
+cargo run --release -- export-snapshot <DIRECTORY>
 ```
 
 #### Importing snapshots
@@ -136,7 +136,7 @@ Snapshots can also be imported directly to use as a base when reconstructing the
 > Importing a snapshot when reconstruction has progressed further than the snapshot has the same effect as truncating the reconstructed state to that of the snapshot.
 
 ```fish
-cargo run -- reconstruct --snapshot <DIRECTORY> l1 --http-url <HTTP-URL>
+cargo run --release -- reconstruct --snapshot <DIRECTORY> l1 --http-url <HTTP-URL>
 ```
 
 ### Additional commands
@@ -144,7 +144,7 @@ cargo run -- reconstruct --snapshot <DIRECTORY> l1 --http-url <HTTP-URL>
 To view all available options, you can use the `help` command:
 
 ```fish
-cargo run -- --help
+cargo run --release -- --help
 
 zkSync state reconstruction tool
 
@@ -163,7 +163,7 @@ Options:
 You can also view all the options for the subcommands in a similar fashion:
 
 ```fish
-cargo run -- reconstruct --help
+cargo run --release -- reconstruct --help
 
 Reconstruct L2 state from a source
 
