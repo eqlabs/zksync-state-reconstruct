@@ -96,6 +96,14 @@ Once the tool is running it will continuously output the state reconstruction pr
 2024-01-02T13:30:06.031946Z  INFO PROGRESS: [ 0%] CUR BLOCK L1: 16644868 L2: 27 TOTAL BLOCKS PROCESSED L1: 16378 L2: 27
 ```
 
+<details>
+<summary>Metrics reference</summary>
+
+- `CUR BLOCK`: The last block height that was processed.
+- `TOTAL BLOCKS PROCESSED`: The total number of blocks that has been processed since starting.
+
+</details>
+
 On each block insert, the tool will compare the new state root hash with that published on L1. Should they differ, the tool will panic. You can then use the `query` command to get additional information, as such:
 
 ```fish
@@ -104,11 +112,6 @@ cargo run --release -- query root-hash
 Batch: <BATCH NUMBER where hash deviated>
 Root Hash: <ROOT HASH of the local state tree>
 ```
-
-Metrics reference:
-
-- `CUR BLOCK`: The last block height that was processed.
-- `TOTAL BLOCKS PROCESSED`: The total number of blocks that has been processed since starting.
 
 ### Snapshots
 
