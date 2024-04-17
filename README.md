@@ -22,7 +22,7 @@ Currently there are three ways to setup the environment: using the provided Nix 
 <details>
 <summary>Nix Flake (Linux only)</summary>
 
-To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>.   <br><br>
+To use the supplied Nix development environment you need to have Nix installed. This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>.   <br><br>
 
 Once Nix is installed, the development environment can be activated via the following command:
 
