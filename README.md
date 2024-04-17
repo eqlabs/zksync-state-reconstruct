@@ -1,66 +1,80 @@
 # zkSync State Reconstruction Tool
+
+<!--toc:start-->
+- [zkSync State Reconstruction Tool](#zksync-state-reconstruction-tool)
+  - [Prerequisites & setup](#prerequisites--setup)
+  - [Usage](#usage)
+    - [Additional commands](#additional-commands)
+<!--toc:end-->
+
 > Tool / Library to reconstruct zkSync state from commit blocks published on L1
 
 ## Prerequisites & setup
+
 Currently there are three ways to setup the environment: using the provided Nix flake, the container image, or installing the dependencies manually.
 
 <details>
-  <summary>Nix Flake (Linux only)</summary>
-  To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>.   <br><br>
+<summary>Nix Flake (Linux only)</summary>
 
-  Once Nix is installed, the development environment can be activated via the following command:
+To use the supplied Nix development environment you need to have Nix installed, This can be done by following the official instructions <a href="https://nixos.org/download.html">here</a>.   <br><br>
 
-  ```nix
-  nix develop --experimental-features 'nix-command flakes'
-  ```
+Once Nix is installed, the development environment can be activated via the following command:
 
-  If you instead want to permanently enable the experimental flakes feature, you can do so by following the instructions detailed <a href="https://nixos.wiki/wiki/Flakes">here</a>. The environment can then be activated via:
+```nix
+nix develop --experimental-features 'nix-command flakes'
+```
 
-  ```nix
-  nix develop
-  ```
+If you instead want to permanently enable the experimental flakes feature, you can do so by following the instructions detailed <a href="https://nixos.wiki/wiki/Flakes">here</a>. The environment can then be activated via:
+
+```nix
+nix develop
+```
 
 </details>
 
 <details>
-  <summary>Container Image</summary>
-  To build the container image, use:
-  <br><br>
+<summary>Container Image</summary>
+To build the container image, use:
+<br><br>
 
-  ```fish
-  podman build -t state-reconstruction:latest .
-  ```
+```fish
+podman build -t state-reconstruction:latest .
+```
 
-  And, to run it with `podman`, please use:
+And, to run it with `podman`, please use:
 
-  ```fish
-  podman run -it state-reconstruction:latest
-  ```
+```fish
+podman run -it state-reconstruction:latest
+```
+
 </details>
 
 <details>
-  <summary>Manually</summary>
-  This tool is written in nightly Rust; you can install Rust by following the official instructions <a href="https://www.rust-lang.org/learn/get-started">here</a>, and then running the following command to switch to the nightly toolchain:
-  <br><br>
+<summary>Manually</summary>
+This tool is written in nightly Rust; you can install Rust by following the official instructions <a href="https://www.rust-lang.org/learn/get-started">here</a>, and then running the following command to switch to the nightly toolchain:
+<br><br>
 
-  ```fish
-  rustup toolchain install nightly
-  ```
+```fish
+rustup toolchain install nightly
+```
 
-  You also need to have `protobuf`, version `3.20` or above, installed and accessible via `PATH`. Use your preferred package manager to do this. For example, using brew:
+You also need to have `protobuf`, version `3.20` or above, installed and accessible via `PATH`. Use your preferred package manager to do this. For example, using brew:
 
-  ```fish
-  brew install protobuf
-  ```
+```fish
+brew install protobuf
+```
+
 </details>
 
 > [!IMPORTANT]
 > It is highly recommend to override the maximum number of open file descriptors. Without doing so you may eventually run into an error, halting progress. On Unix machines this can be done by using `ulimit` along with the `-n` argument:
+>
 > ```fish
 > ulimit -n 8192
 > ```
 
 ## Usage
+
 To start reconstructing the state, run the following command with any valid HTTP/HTTPS Ethereum JSON-RPC endpoint, for example using `https://eth.llamarpc.com`:
 
 ```fish
@@ -77,6 +91,7 @@ Once the tool is running it will continuously output the state reconstruction pr
 ```
 
 On each block insert, the tool will compare the new state root hash with that published on L1. Should they differ, the tool will panic. You can then use the `query` command to get additional information, as such:
+
 ```fish
 cargo run -- query root-hash
 
