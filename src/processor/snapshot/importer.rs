@@ -1,11 +1,12 @@
 use std::{
-    fs,
+    fs::{self, DirEntry},
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use ethers::types::U64;
 use eyre::Result;
+use regex::{Captures, Regex};
 use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
 use state_reconstruct_storage::{
     reconstruction::ReconstructionDatabase,
@@ -18,6 +19,9 @@ use tokio::sync::Mutex;
 
 use super::{SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME};
 use crate::processor::tree::tree_wrapper::TreeWrapper;
+
+const SNAPSHOT_CHUNK_REGEX: &str = r"snapshot_l1_batch_(\d*)_storage_logs_part_\d*.proto.gzip";
+const FACTORY_DEPS_REGEX: &str = r"snapshot_l1_batch_(\d*)_factory_deps.proto.gzip";
 
 pub struct SnapshotImporter {
     // The path of the directory where snapshot chunks are stored.
@@ -52,44 +56,7 @@ impl SnapshotImporter {
         let header = if let Ok(string) = fs::read_to_string(header_path) {
             serde_json::from_str(&string)?
         } else {
-            let mut l1_batch_number = U64::from(0);
-            let mut storage_logs_chunks = Vec::new();
-            let mut factory_deps_filepath = String::new();
-
-            let mut chunk_id = 0;
-            for file in self.directory.read_dir()? {
-                let file_name = file?
-                    .file_name()
-                    .to_str()
-                    .expect("invalid filename")
-                    .to_string();
-
-                if file_name.contains("storage_logs_part") {
-                    // Procure l1 batch number from file name.
-                    let number: usize = file_name
-                        .split('_')
-                        .nth(3)
-                        .expect("invalid storage logs part filename")
-                        .parse()?;
-                    l1_batch_number = U64::from(number);
-
-                    // Add the storage log parts filename to header.
-                    let chunk_metadata = SnapshotStorageLogsChunkMetadata {
-                        chunk_id,
-                        filepath: file_name,
-                    };
-                    storage_logs_chunks.push(chunk_metadata);
-                    chunk_id += 1;
-                } else if file_name.contains("factory_deps") {
-                    factory_deps_filepath = file_name;
-                }
-            }
-            SnapshotHeader {
-                l1_batch_number,
-                storage_logs_chunks,
-                factory_deps_filepath,
-                ..Default::default()
-            }
+            self.infer_header_from_file_names()?
         };
 
         Ok(header)
@@ -125,5 +92,63 @@ impl SnapshotImporter {
             chunks.push(storage_logs_chunk);
         }
         Ok(chunks)
+    }
+
+    fn infer_header_from_file_names(&self) -> Result<SnapshotHeader> {
+        let snapshot_chunk_re = Regex::new(SNAPSHOT_CHUNK_REGEX)?;
+        let factory_deps_re = Regex::new(FACTORY_DEPS_REGEX)?;
+
+        let mut l1_batch_number = None;
+        let mut storage_logs_chunks = Vec::new();
+        let mut factory_deps_filepath = String::new();
+
+        // Closure to make sure that every file name contains the same l1 batch number, assinging
+        // one if it is currently set to [`None`].
+        let mut process_l1_number = |caps: Captures| {
+            let number: u64 = caps[1].parse().expect("capture was not a number");
+            match l1_batch_number {
+                Some(num) => assert_eq!(num, U64::from(number)),
+                None => l1_batch_number = Some(U64::from(number)),
+            }
+        };
+
+        // Read files and sort them by path name.
+        let mut files: Vec<_> = self
+            .directory
+            .read_dir()?
+            .map(|f| f.expect("read file error"))
+            .collect();
+        files.sort_by_key(DirEntry::path);
+
+        let mut chunk_id = 0;
+        for file in files {
+            let file_name = file
+                .file_name()
+                .to_str()
+                .expect("invalid filename")
+                .to_string();
+
+            if let Some(caps) = snapshot_chunk_re.captures(&file_name) {
+                process_l1_number(caps);
+
+                // Add the storage log parts filename to header.
+                let chunk_metadata = SnapshotStorageLogsChunkMetadata {
+                    chunk_id,
+                    filepath: file_name,
+                };
+                storage_logs_chunks.push(chunk_metadata);
+                chunk_id += 1;
+            } else if let Some(caps) = factory_deps_re.captures(&file_name) {
+                process_l1_number(caps);
+                factory_deps_filepath = file_name;
+            }
+        }
+
+        Ok(SnapshotHeader {
+            l1_batch_number: l1_batch_number.expect("no l1 batch number found"),
+            storage_logs_chunks,
+            factory_deps_filepath,
+            ..Default::default()
+        })
     }
 }
