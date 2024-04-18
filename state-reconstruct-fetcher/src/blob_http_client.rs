@@ -1,3 +1,5 @@
+use std::fs;
+
 use blobscan_client::{BlobResponseFormatError, BlobSupport};
 use tokio::time::{sleep, Duration};
 
@@ -44,7 +46,7 @@ impl BlobHttpClient {
                         }
                         Err(e) => {
                             tracing::error!("failed parsing response of {url}");
-                            return Err(e.into());
+                            return self.get_blob_backup(kzg_commitment, e);
                         }
                     },
                     Err(e) => {
@@ -59,5 +61,26 @@ impl BlobHttpClient {
             }
         }
         Err(ParseError::BlobStorageError(url))
+    }
+
+    fn get_blob_backup(
+        &self,
+        kzg_commitment: &[u8],
+        orig_err: BlobResponseFormatError,
+    ) -> Result<Vec<u8>, ParseError> {
+        let backup_file = format!("known/0x{}", hex::encode(kzg_commitment));
+        match fs::read_to_string(backup_file) {
+            Ok(data) => {
+                let data = data.trim();
+                let plain = if let Some(p) = data.strip_prefix("0x") {
+                    p
+                } else {
+                    data
+                };
+                hex::decode(plain)
+                    .map_err(|e| BlobResponseFormatError(plain.to_string(), e.to_string()).into())
+            }
+            Err(_) => Err(orig_err.into()),
+        }
     }
 }
