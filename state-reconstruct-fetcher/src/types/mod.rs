@@ -1,4 +1,3 @@
-use blobscan_client::BlobResponseFormatError;
 use ethers::{abi, types::U256};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -41,7 +40,7 @@ pub enum ParseError {
     BlobStorageError(String),
 
     #[error("blob format error: {0}")]
-    BlobFormatError(#[from] BlobResponseFormatError),
+    BlobFormatError(String, String),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
