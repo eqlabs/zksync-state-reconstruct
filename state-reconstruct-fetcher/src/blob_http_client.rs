@@ -37,6 +37,11 @@ impl BlobHttpClient {
     }
 
     pub async fn get_blob(&self, kzg_commitment: &[u8]) -> Result<Vec<u8>, ParseError> {
+        let known = self.get_known_blob(kzg_commitment)?;
+        if known.len() > 0 {
+            return Ok(known);
+        }
+
         let url = self.format_url(kzg_commitment);
         for attempt in 1..=MAX_RETRIES {
             match self.client.get(&url).send().await {
@@ -54,7 +59,7 @@ impl BlobHttpClient {
                         }
                         Err(e) => {
                             tracing::error!("failed parsing response of {url}");
-                            return self.get_blob_backup(kzg_commitment, e);
+                            return Err(e);
                         }
                     },
                     Err(e) => {
@@ -75,11 +80,7 @@ impl BlobHttpClient {
         format!("{}0x{}", self.url_base, hex::encode(kzg_commitment))
     }
 
-    fn get_blob_backup(
-        &self,
-        kzg_commitment: &[u8],
-        orig_err: ParseError,
-    ) -> Result<Vec<u8>, ParseError> {
+    fn get_known_blob(&self, kzg_commitment: &[u8]) -> Result<Vec<u8>, ParseError> {
         let backup_file = format!("known/0x{}", hex::encode(kzg_commitment));
         match fs::read_to_string(backup_file) {
             Ok(data) => {
@@ -92,7 +93,7 @@ impl BlobHttpClient {
                 hex::decode(plain)
                     .map_err(|e| ParseError::BlobFormatError(plain.to_string(), e.to_string()))
             }
-            Err(_) => Err(orig_err),
+            Err(_) => Ok(Vec::new()),
         }
     }
 }
