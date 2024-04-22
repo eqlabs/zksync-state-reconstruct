@@ -126,9 +126,10 @@ impl TreeWrapper {
         chunks: Vec<SnapshotStorageLogsChunk>,
         l1_batch_number: U64,
     ) -> Result<()> {
-        let mut tree_entries = Vec::new();
-
+        let mut total_tree_entries = 0;
         for (i, chunk) in chunks.iter().enumerate() {
+            let mut tree_entries = Vec::new();
+
             tracing::info!("Importing chunk {}/{}...", i + 1, chunks.len());
 
             for log in &chunk.storage_logs {
@@ -140,14 +141,15 @@ impl TreeWrapper {
                     .expect("cannot add key");
             }
 
+            total_tree_entries += tree_entries.len();
+            self.tree.extend(tree_entries);
+
             tracing::info!("Chunk {} was succesfully imported!", i + 1);
         }
 
-        tracing::info!("Extending merkle tree with imported storage logs...");
-        let num_tree_entries = tree_entries.len();
-        self.tree.extend(tree_entries);
-
-        tracing::info!("Succesfully imported snapshot containing {num_tree_entries} storage logs!",);
+        tracing::info!(
+            "Succesfully imported snapshot containing {total_tree_entries} storage logs!",
+        );
 
         let db = self.inner_db.lock().await;
         db.set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
