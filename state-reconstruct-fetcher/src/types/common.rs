@@ -145,7 +145,7 @@ pub fn parse_compressed_state_diffs(
     // Parse initial writes.
     let num_of_initial_writes = u16::from_be_bytes(read_next_n_bytes(bytes, pointer));
     for _ in 0..num_of_initial_writes {
-        let derived_key = U256::from_big_endian(&read_next_n_bytes::<32>(bytes, pointer));
+        let derived_key = U256::from_little_endian(&read_next_n_bytes::<32>(bytes, pointer));
 
         let packing_type = read_compressed_value(bytes, pointer)?;
         state_diffs.push(L2ToL1Pubdata::CompressedStateDiff {
