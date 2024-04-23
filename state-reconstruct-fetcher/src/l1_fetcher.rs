@@ -82,7 +82,12 @@ impl L1Fetcher {
         let v2 = Contract::load(File::open("./abi/IZkSyncV2.json")?)?;
         let contracts = Contracts { v1, v2 };
 
-        let metrics = Arc::new(Mutex::new(L1Metrics::new(config.start_block)));
+        let initial_l1_block = if inner_db.is_none() {
+            GENESIS_BLOCK
+        } else {
+            config.start_block
+        };
+        let metrics = Arc::new(Mutex::new(L1Metrics::new(initial_l1_block)));
 
         Ok(L1Fetcher {
             provider,
@@ -121,7 +126,6 @@ impl L1Fetcher {
         // Initialize metrics with last state, if it exists.
         {
             let mut metrics = self.metrics.lock().await;
-            metrics.initial_l1_block = self.config.start_block;
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
             if let Some(snapshot) = &self.inner_db {
