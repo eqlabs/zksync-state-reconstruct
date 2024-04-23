@@ -40,6 +40,7 @@ impl SnapshotExporter {
         let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number,
+            generated_at: Utc::now(),
             ..Default::default()
         };
 
@@ -53,7 +54,6 @@ impl SnapshotExporter {
             .truncate(false)
             .open(path)?;
 
-        header.generated_at = Utc::now();
         serde_json::to_writer(outfile, &header)?;
 
         Ok(())
