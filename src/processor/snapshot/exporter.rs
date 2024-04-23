@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use chrono::offset::Utc;
 use ethers::types::U256;
 use eyre::Result;
 use state_reconstruct_storage::{
@@ -52,6 +53,7 @@ impl SnapshotExporter {
             .truncate(false)
             .open(path)?;
 
+        header.generated_at = Utc::now();
         serde_json::to_writer(outfile, &header)?;
 
         Ok(())
