@@ -5,10 +5,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
-members = [
-  "state-reconstruct-fetcher",
-  "state-reconstruct-storage",
-]
+members = ["state-reconstruct-fetcher", "state-reconstruct-storage"]
 
 [dependencies]
 async-trait = "0.1.74"
@@ -29,7 +26,8 @@ state-reconstruct-fetcher = { path = "./state-reconstruct-fetcher" }
 state-reconstruct-storage = { path = "./state-reconstruct-storage" }
 thiserror = "1.0.50"
 tikv-jemallocator = "0.5"
-tokio = { version = "1.33.0", features = ["macros"] }
+tokio = { version = "1.33.0", features = ["macros", "signal"] }
+tokio-util = "0.7.10"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.17"
 zksync_merkle_tree = { git = "https://github.com/matter-labs/zksync-era.git" }

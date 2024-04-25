@@ -100,7 +100,11 @@ impl L1Fetcher {
         })
     }
 
-    pub async fn run(&self, sink: mpsc::Sender<CommitBlock>) -> Result<()> {
+    pub async fn run(
+        &self,
+        sink: mpsc::Sender<CommitBlock>,
+        token: CancellationToken,
+    ) -> Result<()> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
         // exists, start from the block number specified in that snapshot.
@@ -144,22 +148,6 @@ impl L1Fetcher {
                     tokio::time::sleep(Duration::from_secs(METRICS_PRINT_INTERVAL_S)).await;
                 }
             }
-        });
-
-        // Wait for shutdown signal in background.
-        let token = CancellationToken::new();
-        let cloned_token = token.clone();
-        tokio::spawn(async move {
-            match tokio::signal::ctrl_c().await {
-                Ok(()) => {
-                    tracing::info!("Shutdown signal received, finishing up and shutting down...");
-                }
-                Err(err) => {
-                    tracing::error!("Shutdown signal failed: {err}");
-                }
-            };
-
-            cloned_token.cancel();
         });
 
         let (hash_tx, hash_rx) = mpsc::channel(5);

@@ -2,7 +2,6 @@
 name = "state-reconstruct-storage"
 version = "0.1.0"
 edition = "2021"
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -12,9 +11,9 @@ chrono = "0.4.31"
 ethers = "1.0.2"
 eyre = "0.6.8"
 flate2 = "1.0.28"
-serde = { version = "1.0.189", features = ["derive"] }
 prost = "0.12.4"
 rocksdb = "0.21.0"
+serde = { version = "1.0.189", features = ["derive"] }
 thiserror = "1.0.50"
 zkevm_opcode_defs = { git = "https://github.com/matter-labs/era-zkevm_opcode_defs.git" }
 

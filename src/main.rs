@@ -25,6 +25,7 @@ use state_reconstruct_fetcher::{
 };
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 use crate::{
@@ -64,6 +65,22 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Wait for shutdown signal in background.
+    let token = CancellationToken::new();
+    let cloned_token = token.clone();
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                tracing::info!("Shutdown signal received, finishing up and shutting down...");
+            }
+            Err(err) => {
+                tracing::error!("Shutdown signal failed: {err}");
+            }
+        };
+
+        cloned_token.cancel();
+    });
+
     match cli.subcommand {
         Command::Reconstruct {
             source,
@@ -93,7 +110,7 @@ async fn main() -> Result<()> {
                         processor.run(rx).await;
                     });
 
-                    fetcher.run(tx).await?;
+                    fetcher.run(tx, token).await?;
                     processor_handle.await?;
                 }
                 ReconstructSource::File { file } => {
@@ -129,7 +146,7 @@ async fn main() -> Result<()> {
                 processor.run(rx).await;
             });
 
-            fetcher.run(tx).await?;
+            fetcher.run(tx, token).await?;
             processor_handle.await?;
 
             tracing::info!("Successfully downloaded CommitBlocks to {}", file);
@@ -177,7 +194,7 @@ async fn main() -> Result<()> {
                 processor.run(rx).await;
             });
 
-            fetcher.run(tx).await?;
+            fetcher.run(tx, token).await?;
             processor_handle.await?;
         }
         Command::ExportSnapshot {
