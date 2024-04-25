@@ -4445,7 +4445,6 @@ dependencies = [
  "thiserror",
  "tikv-jemallocator",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "zksync_merkle_tree",
