@@ -19,7 +19,9 @@ pub struct L1FetcherOptions {
     /// The number of blocks to process from Ethereum.
     #[arg(long)]
     pub block_count: Option<u64>,
-    /// If present, don't poll for new blocks after reaching the end.
+    /// The amount of blocks to step over on each log iterration.
+    #[arg(long, default_value_t = ethereum::BLOCK_STEP)]
+    pub block_step: u64,
     #[arg(long)]
     pub disable_polling: bool,
 }
@@ -33,6 +35,7 @@ impl From<L1FetcherOptions> for FetcherOptions {
             start_block: opt.start_block,
             block_count: opt.block_count,
             disable_polling: opt.disable_polling,
+            block_step: opt.block_step,
         }
     }
 }

@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     blob_http_client::BlobHttpClient,
-    constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    constants::ethereum::{BLOB_BLOCK, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     metrics::L1Metrics,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -52,6 +52,8 @@ pub struct L1FetcherOptions {
     pub start_block: u64,
     /// The number of blocks to process from Ethereum.
     pub block_count: Option<u64>,
+    /// The amount of blocks to step over on each log iterration.
+    pub block_step: u64,
     /// If present, don't poll for new blocks after reaching the end.
     pub disable_polling: bool,
 }
@@ -238,6 +240,7 @@ impl L1Fetcher {
         let metrics = self.metrics.clone();
         let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
         let provider_clone = self.provider.clone();
+        let block_step = self.config.block_step;
 
         Ok(tokio::spawn({
             async move {
@@ -299,7 +302,7 @@ impl L1Fetcher {
                     // TODO: Filter by executed blocks too.
                     // Don't go beyond `end_block_number` - tip of the chain might still change.
                     let filter_end_block_number =
-                        cmp::min(current_l1_block_number + BLOCK_STEP - 1, end_block_number);
+                        cmp::min(current_l1_block_number + block_step - 1, end_block_number);
                     let filter = Filter::new()
                         .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
                         .topic0(event.signature())
@@ -363,9 +366,9 @@ impl L1Fetcher {
 
                     metrics.lock().await.latest_l1_block_num = current_l1_block_number.as_u64();
 
-                    let next_l1_block_number = current_l1_block_number + U64::from(BLOCK_STEP);
+                    let next_l1_block_number = current_l1_block_number + U64::from(block_step);
                     if next_l1_block_number > end_block_number {
-                        // Some of the `BLOCK_STEP` blocks asked for in this iteration
+                        // Some of the `block_step` blocks asked for in this iteration
                         // probably didn't exist yet, so we set `current_l1_block_number`
                         // appropriately as to not skip them.
                         if current_l1_block_number < end_block_number {
@@ -385,7 +388,7 @@ impl L1Fetcher {
                             // iteration & updated afterwards.
                         }
                     } else {
-                        // We haven't reached past `end_block` yet, stepping by [`BLOCK_STEP`].
+                        // We haven't reached past `end_block` yet, stepping by `block_step`.
                         current_l1_block_number = next_l1_block_number;
                     }
                 }
