@@ -267,7 +267,10 @@ impl L1Fetcher {
                             }
                         } else {
                             tracing::debug!("Cannot get latest block number...");
-                            tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                            tokio::select! {
+                                _ = cancellation_token.cancelled() => {}
+                                _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
+                            }
                         }
 
                         continue;
@@ -281,7 +284,10 @@ impl L1Fetcher {
                         // `current_l1_block_number > end_block_number`.
                         assert!(!disable_polling);
                         tracing::debug!("Waiting for upstream to move on...");
-                        tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                        tokio::select! {
+                            _ = cancellation_token.cancelled() => {}
+                            _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
+                        }
                         end_block = None;
                         continue;
                     }
@@ -348,7 +354,10 @@ impl L1Fetcher {
                             latest_l2_block_number = new_l2_block_number;
                         }
                     } else {
-                        tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                        tokio::select! {
+                            _ = cancellation_token.cancelled() => {}
+                            _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
+                        }
                         continue;
                     };
 
@@ -498,7 +507,10 @@ impl L1Fetcher {
                                         tracing::debug!("Shutting down parsing...");
                                         return last_block_number_processed;
                                     }
-                                    sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)).await;
+                                    tokio::select! {
+                                        _ = cancellation_token.cancelled() => {}
+                                        _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
+                                    }
                                 }
                                 ParseError::BlobFormatError(data, inner) => {
                                     tracing::error!("Cannot parse {}: {}", data, inner);
