@@ -1,6 +1,6 @@
 pub mod ethereum {
     /// Number of Ethereum blocks to advance in one filter step.
-    pub const BLOCK_STEP: u64 = 128;
+    pub const BLOCK_STEP: u64 = 10_000;
 
     /// Block number in Ethereum for zkSync genesis block.
     pub const GENESIS_BLOCK: u64 = 16_627_460;
