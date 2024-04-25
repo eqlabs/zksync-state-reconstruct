@@ -1,4 +1,4 @@
-use std::{cmp, fs::File, future::Future, sync::Arc};
+use std::{cmp, fs::File, future::Future, ops::Deref, sync::Arc};
 
 use ethers::{
     abi::{Contract, Function},
@@ -23,8 +23,6 @@ use crate::{
 
 /// `MAX_RETRIES` is the maximum number of retries on failed L1 call.
 const MAX_RETRIES: u8 = 5;
-/// The interval in seconds in which to poll for new blocks.
-const LONG_POLLING_INTERVAL_S: u64 = 120;
 /// The interval in seconds to wait before retrying to fetch a previously failed transaction.
 const FAILED_FETCH_RETRY_INTERVAL_S: u64 = 10;
 /// The interval in seconds in which to print metrics.
@@ -56,6 +54,32 @@ pub struct L1FetcherOptions {
     pub block_step: u64,
     /// If present, don't poll for new blocks after reaching the end.
     pub disable_polling: bool,
+}
+
+#[derive(Clone)]
+struct FetcherCancellationToken(CancellationToken);
+
+impl FetcherCancellationToken {
+    const LONG_TIMEOUT_S: u64 = 120;
+
+    pub fn new() -> FetcherCancellationToken {
+        FetcherCancellationToken(CancellationToken::new())
+    }
+
+    pub async fn cancelled_else_long_timeout(&self) {
+        tokio::select! {
+            _ = self.cancelled() => {}
+            _ = tokio::time::sleep(Duration::from_secs(Self::LONG_TIMEOUT_S)) => {}
+        }
+    }
+}
+
+impl Deref for FetcherCancellationToken {
+    type Target = CancellationToken;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Clone)]
@@ -147,7 +171,7 @@ impl L1Fetcher {
         });
 
         // Wait for shutdown signal in background.
-        let token = CancellationToken::new();
+        let token = FetcherCancellationToken::new();
         let cloned_token = token.clone();
         tokio::spawn(async move {
             match tokio::signal::ctrl_c().await {
@@ -228,7 +252,7 @@ impl L1Fetcher {
     fn spawn_main_handler(
         &self,
         hash_tx: mpsc::Sender<H256>,
-        cancellation_token: CancellationToken,
+        cancellation_token: FetcherCancellationToken,
         mut current_l1_block_number: U64,
         max_end_block: Option<U64>,
         disable_polling: bool,
@@ -279,10 +303,7 @@ impl L1Fetcher {
                             }
                         } else {
                             tracing::debug!("Cannot get latest block number...");
-                            tokio::select! {
-                                _ = cancellation_token.cancelled() => {}
-                                _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
-                            }
+                            cancellation_token.cancelled_else_long_timeout().await;
                         }
 
                         continue;
@@ -296,10 +317,7 @@ impl L1Fetcher {
                         // `current_l1_block_number > end_block_number`.
                         assert!(!disable_polling);
                         tracing::debug!("Waiting for upstream to move on...");
-                        tokio::select! {
-                            _ = cancellation_token.cancelled() => {}
-                            _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
-                        }
+                        cancellation_token.cancelled_else_long_timeout().await;
                         end_block = None;
                         continue;
                     }
@@ -366,10 +384,7 @@ impl L1Fetcher {
                             latest_l2_block_number = new_l2_block_number;
                         }
                     } else {
-                        tokio::select! {
-                            _ = cancellation_token.cancelled() => {}
-                            _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
-                        }
+                        cancellation_token.cancelled_else_long_timeout().await;
                         continue;
                     };
 
@@ -411,7 +426,7 @@ impl L1Fetcher {
         &self,
         mut hash_rx: mpsc::Receiver<H256>,
         l1_tx_tx: mpsc::Sender<Transaction>,
-        cancellation_token: CancellationToken,
+        cancellation_token: FetcherCancellationToken,
         mut last_block: u64,
     ) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
@@ -478,7 +493,7 @@ impl L1Fetcher {
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlock>,
-        cancellation_token: CancellationToken,
+        cancellation_token: FetcherCancellationToken,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
@@ -519,10 +534,7 @@ impl L1Fetcher {
                                         tracing::debug!("Shutting down parsing...");
                                         return last_block_number_processed;
                                     }
-                                    tokio::select! {
-                                        _ = cancellation_token.cancelled() => {}
-                                        _ = tokio::time::sleep(Duration::from_secs(LONG_POLLING_INTERVAL_S)) => {}
-                                    }
+                                    cancellation_token.cancelled_else_long_timeout().await;
                                 }
                                 ParseError::BlobFormatError(data, inner) => {
                                     tracing::error!("Cannot parse {}: {}", data, inner);
