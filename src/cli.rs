@@ -22,6 +22,7 @@ pub struct L1FetcherOptions {
     /// The amount of blocks to step over on each log iterration.
     #[arg(long, default_value_t = ethereum::BLOCK_STEP)]
     pub block_step: u64,
+    /// If present, don't poll for new blocks after reaching the end.
     #[arg(long)]
     pub disable_polling: bool,
 }
