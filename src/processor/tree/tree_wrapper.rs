@@ -3,16 +3,20 @@ use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, s
 use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
-use state_reconstruct_fetcher::{constants::storage::INITAL_STATE_PATH, types::CommitBlock};
+use state_reconstruct_fetcher::{
+    constants::storage::{INITAL_STATE_PATH, INNER_DB_NAME},
+    types::CommitBlock,
+};
 use state_reconstruct_storage::{
     reconstruction::ReconstructionDatabase, types::SnapshotStorageLogsChunk, PackingType,
 };
 use thiserror::Error;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc::Receiver, Mutex};
 use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
+use crate::processor::snapshot::DEFAULT_CHUNK_SIZE;
 
 #[derive(Error, Debug)]
 pub enum TreeError {
@@ -52,6 +56,13 @@ impl TreeWrapper {
             tree,
             inner_db,
         })
+    }
+
+    pub async fn new_snapshot_wrapper(db_path: &Path) -> Result<Self> {
+        let inner_db_path = db_path.join(INNER_DB_NAME);
+        let new_state = ReconstructionDatabase::new(inner_db_path.clone())?;
+        let snapshot = Arc::new(Mutex::new(new_state));
+        Self::new(db_path, snapshot.clone(), true).await
     }
 
     /// Inserts a block into the tree and returns the root hash of the resulting state tree.
@@ -123,36 +134,33 @@ impl TreeWrapper {
 
     pub async fn restore_from_snapshot(
         &mut self,
-        chunks: Vec<SnapshotStorageLogsChunk>,
+        mut rx: Receiver<SnapshotStorageLogsChunk>,
         l1_batch_number: U64,
     ) -> Result<()> {
+        let mut inner_db = self.inner_db.lock().await;
         let mut total_tree_entries = 0;
-        for (i, chunk) in chunks.iter().enumerate() {
-            let mut tree_entries = Vec::new();
 
-            tracing::info!("Importing chunk {}/{}...", i + 1, chunks.len());
+        let mut i = 0;
+        while let Some(chunk) = rx.recv().await {
+            let mut tree_entries = Vec::with_capacity(DEFAULT_CHUNK_SIZE);
 
             for log in &chunk.storage_logs {
                 tree_entries.push(TreeEntry::new(log.key, log.enumeration_index, log.value));
-                self.inner_db
-                    .lock()
-                    .await
-                    .add_key(&log.key)
-                    .expect("cannot add key");
+                inner_db.add_key(&log.key).expect("cannot add key");
             }
 
             total_tree_entries += tree_entries.len();
             self.tree.extend(tree_entries);
 
             tracing::info!("Chunk {} was succesfully imported!", i + 1);
+            i += 1;
         }
 
         tracing::info!(
             "Succesfully imported snapshot containing {total_tree_entries} storage logs!",
         );
 
-        let db = self.inner_db.lock().await;
-        db.set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
+        inner_db.set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
 
         Ok(())
     }

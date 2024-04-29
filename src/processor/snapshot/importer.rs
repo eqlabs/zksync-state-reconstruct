@@ -1,21 +1,16 @@
 use std::{
     fs::{self, DirEntry},
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use ethers::types::U64;
 use eyre::Result;
 use regex::{Captures, Regex};
-use state_reconstruct_fetcher::constants::storage::INNER_DB_NAME;
-use state_reconstruct_storage::{
-    reconstruction::ReconstructionDatabase,
-    types::{
-        Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
-        SnapshotStorageLogsChunkMetadata,
-    },
+use state_reconstruct_storage::types::{
+    Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
+    SnapshotStorageLogsChunkMetadata,
 };
-use tokio::sync::Mutex;
+use tokio::sync::mpsc::{self, Sender};
 
 use super::{SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME};
 use crate::processor::tree::tree_wrapper::TreeWrapper;
@@ -26,28 +21,36 @@ const FACTORY_DEPS_REGEX: &str = r"snapshot_l1_batch_(\d*)_factory_deps.proto.gz
 pub struct SnapshotImporter {
     // The path of the directory where snapshot chunks are stored.
     directory: PathBuf,
-    // The tree to import state to.
-    tree: TreeWrapper,
 }
 
 impl SnapshotImporter {
-    pub async fn new(directory: PathBuf, db_path: &Path) -> Result<Self> {
-        let inner_db_path = db_path.join(INNER_DB_NAME);
-        let new_state = ReconstructionDatabase::new(inner_db_path.clone())?;
-        let snapshot = Arc::new(Mutex::new(new_state));
-        let tree = TreeWrapper::new(db_path, snapshot.clone(), true).await?;
-
-        Ok(Self { directory, tree })
+    pub fn new(directory: PathBuf) -> Self {
+        Self { directory }
     }
 
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(self, db_path: &Path) -> Result<()> {
+        let (tx, rx) = mpsc::channel(1);
+
         let header = self.read_header()?;
         let _factory_deps = self.read_factory_deps(&header)?;
-        let storage_logs_chunk = self.read_storage_logs_chunks(&header)?;
 
-        self.tree
-            .restore_from_snapshot(storage_logs_chunk, header.l1_batch_number)
+        // Read storage logs async sending each read one into the tree to process.
+        tokio::spawn({
+            let header = header.clone();
+            async move {
+                self.read_storage_logs_chunks_async(&header, tx)
+                    .await
+                    .expect("failed to read storage_logs_chunks");
+            }
+        });
+
+        let mut tree = TreeWrapper::new_snapshot_wrapper(db_path)
             .await
+            .expect("can't create tree");
+        tree.restore_from_snapshot(rx, header.l1_batch_number)
+            .await?;
+
+        Ok(())
     }
 
     fn read_header(&self) -> Result<SnapshotHeader> {
@@ -71,10 +74,11 @@ impl SnapshotImporter {
         SnapshotFactoryDependencies::decode(&bytes)
     }
 
-    fn read_storage_logs_chunks(
+    async fn read_storage_logs_chunks_async(
         &self,
         header: &SnapshotHeader,
-    ) -> Result<Vec<SnapshotStorageLogsChunk>> {
+        tx: Sender<SnapshotStorageLogsChunk>,
+    ) -> Result<()> {
         // NOTE: I think these are sorted by default, but if not, we need to sort them
         // before extracting the filepaths.
         let filepaths = header
@@ -82,16 +86,18 @@ impl SnapshotImporter {
             .iter()
             .map(|meta| PathBuf::from(&meta.filepath));
 
-        let mut chunks = Vec::with_capacity(filepaths.len());
-        for path in filepaths {
+        let total_chunks = filepaths.len();
+        for (i, path) in filepaths.into_iter().enumerate() {
             let factory_deps_path = self
                 .directory
                 .join(path.file_name().expect("path has no file name"));
             let bytes = fs::read(factory_deps_path)?;
             let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&bytes)?;
-            chunks.push(storage_logs_chunk);
+            tracing::info!("Read chunk {}/{}, processing...", i + 1, total_chunks);
+            tx.send(storage_logs_chunk).await?;
         }
-        Ok(chunks)
+
+        Ok(())
     }
 
     fn infer_header_from_file_names(&self) -> Result<SnapshotHeader> {

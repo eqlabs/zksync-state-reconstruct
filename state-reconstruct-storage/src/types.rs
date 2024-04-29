@@ -73,7 +73,7 @@ pub trait Proto {
     }
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotHeader {
     pub l1_batch_number: L1BatchNumber,
     pub miniblock_number: MiniblockNumber,
@@ -85,7 +85,7 @@ pub struct SnapshotHeader {
     pub generated_at: DateTime<Utc>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageLogsChunkMetadata {
     pub chunk_id: u64,
     // can be either a gs or filesystem path

@@ -77,9 +77,8 @@ async fn main() -> Result<()> {
 
             if let Some(directory) = snapshot {
                 tracing::info!("Trying to restore state from snapshot...");
-                let importer =
-                    SnapshotImporter::new(PathBuf::from(directory), &db_path.clone()).await?;
-                importer.run().await?;
+                let importer = SnapshotImporter::new(PathBuf::from(directory));
+                importer.run(&db_path.clone()).await?;
             }
 
             match source {
