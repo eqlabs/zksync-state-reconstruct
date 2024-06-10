@@ -501,8 +501,8 @@ impl L1Fetcher {
         Ok(tokio::spawn({
             async move {
                 let mut boojum_mode = false;
-                let mut function =
-                    contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone();
+                let mut functions =
+                    vec![contracts.v1.functions_by_name("commitBlocks").unwrap()[0].clone()];
                 let mut last_block_number_processed = None;
 
                 while let Some(tx) = l1_tx_rx.recv().await {
@@ -521,12 +521,18 @@ impl L1Fetcher {
                     if !boojum_mode && block_number >= BOOJUM_BLOCK {
                         tracing::debug!("Reached `BOOJUM_BLOCK`, changing commit block format");
                         boojum_mode = true;
-                        function =
-                            contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone();
+                        functions = vec![
+                            contracts.v2.functions_by_name("commitBatches").unwrap()[0].clone(),
+                            contracts
+                                .v2
+                                .functions_by_name("commitBatchesSharedBridge")
+                                .unwrap()[0]
+                                .clone(),
+                        ];
                     }
 
                     let blocks = loop {
-                        match parse_calldata(block_number, &function, &tx.input, &client).await {
+                        match parse_calldata(block_number, &functions, &tx.input, &client).await {
                             Ok(blks) => break blks,
                             Err(e) => match e {
                                 ParseError::BlobStorageError(_) => {
@@ -595,18 +601,27 @@ impl L1Fetcher {
 
 pub async fn parse_calldata(
     l1_block_number: u64,
-    commit_blocks_fn: &Function,
+    commit_candidates: &[Function],
     calldata: &[u8],
     client: &BlobHttpClient,
 ) -> Result<Vec<CommitBlock>, ParseError> {
-    let mut parsed_input = commit_blocks_fn
+    if calldata.len() < 4 {
+        return Err(ParseError::InvalidCalldata("too short".to_string()));
+    }
+
+    let commit_fn = commit_candidates
+        .iter()
+        .find(|f| f.short_signature() == calldata[..4])
+        .ok_or_else(|| ParseError::InvalidCalldata("signature not found".to_string()))?;
+    let mut parsed_input = commit_fn
         .decode_input(&calldata[4..])
         .map_err(|e| ParseError::InvalidCalldata(e.to_string()))?;
 
-    if parsed_input.len() != 2 {
+    let argc = parsed_input.len();
+    if argc != 2 && argc != 3 {
         return Err(ParseError::InvalidCalldata(format!(
-            "invalid number of parameters (got {}, expected 2) for commitBlocks function",
-            parsed_input.len()
+            "invalid number of parameters (got {}, expected 2 or 3) for commitBlocks function",
+            argc
         )));
     }
 
