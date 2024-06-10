@@ -601,7 +601,7 @@ impl L1Fetcher {
 
 pub async fn parse_calldata(
     l1_block_number: u64,
-    commit_candidates: &Vec<Function>,
+    commit_candidates: &[Function],
     calldata: &[u8],
     client: &BlobHttpClient,
 ) -> Result<Vec<CommitBlock>, ParseError> {
