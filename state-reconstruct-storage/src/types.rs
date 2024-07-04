@@ -20,7 +20,7 @@ pub type StorageKey = U256;
 pub type StorageValue = H256;
 
 pub mod protobuf {
-    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
+    include!(concat!(env!("OUT_DIR"), "/zksync.types.rs"));
 }
 
 pub trait Proto {
@@ -159,7 +159,8 @@ impl Proto for SnapshotStorageLog {
 
         Self::ProtoStruct {
             account_address: None,
-            storage_key: Some(key.to_vec()),
+            storage_key: None,
+            hashed_key: Some(key.to_vec()),
             storage_value: Some(self.value.as_bytes().to_vec()),
             l1_batch_number_of_initial_write: Some(self.l1_batch_number_of_initial_write.as_u32()),
             enumeration_index: Some(self.enumeration_index),
