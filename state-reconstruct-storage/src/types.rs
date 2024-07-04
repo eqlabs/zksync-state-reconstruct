@@ -73,8 +73,21 @@ pub trait Proto {
     }
 }
 
+/// Version of snapshot influencing the format of data stored in GCS.
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[repr(u16)]
+pub enum SnapshotVersion {
+    /// Initial snapshot version. Keys in storage logs are stored as `(address, key)` pairs.
+    Version0 = 0,
+    /// Snapshot version made compatible with L1 recovery. Differs from `Version0` by including
+    /// hashed keys in storage logs instead of `(address, key)` pairs.
+    #[default]
+    Version1 = 1,
+}
+
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotHeader {
+    pub version: SnapshotVersion,
     pub l1_batch_number: L1BatchNumber,
     pub miniblock_number: MiniblockNumber,
     // ordered by chunk_id
@@ -133,7 +146,6 @@ impl Proto for SnapshotStorageLogsChunk {
 pub struct SnapshotStorageLog {
     pub key: StorageKey,
     pub value: StorageValue,
-    pub miniblock_number_of_initial_write: MiniblockNumber,
     pub l1_batch_number_of_initial_write: L1BatchNumber,
     pub enumeration_index: u64,
 }
@@ -159,7 +171,6 @@ impl Proto for SnapshotStorageLog {
         Ok(Self {
             key: U256::from_big_endian(proto.storage_key()),
             value: StorageValue::from(&value_bytes),
-            miniblock_number_of_initial_write: U64::from(0),
             l1_batch_number_of_initial_write: proto.l1_batch_number_of_initial_write().into(),
             enumeration_index: proto.enumeration_index(),
         })
