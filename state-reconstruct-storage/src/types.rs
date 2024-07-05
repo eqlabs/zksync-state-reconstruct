@@ -4,7 +4,6 @@ use std::{
 };
 
 use bytes::BytesMut;
-use chrono::{offset::Utc, DateTime};
 use ethers::types::{H256, U256, U64};
 use eyre::Result;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
@@ -78,28 +77,32 @@ pub trait Proto {
 #[repr(u16)]
 pub enum SnapshotVersion {
     /// Initial snapshot version. Keys in storage logs are stored as `(address, key)` pairs.
+    #[serde(rename = "0")]
     Version0 = 0,
     /// Snapshot version made compatible with L1 recovery. Differs from `Version0` by including
     /// hashed keys in storage logs instead of `(address, key)` pairs.
     #[default]
+    #[serde(rename = "1")]
     Version1 = 1,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotHeader {
     pub version: SnapshotVersion,
+    #[serde(rename = "l1BatchNumber")]
     pub l1_batch_number: L1BatchNumber,
+    #[serde(rename = "miniblockNumber")]
     pub miniblock_number: MiniblockNumber,
     // ordered by chunk_id
+    #[serde(rename = "storageLogsChunks")]
     pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
+    #[serde(rename = "factoryDepsFilepath")]
     pub factory_deps_filepath: String,
-    // Following `L1BatchWithMetadata` type doesn't have definition. Ignoring.
-    //pub last_l1_batch_with_metadata: L1BatchWithMetadata,
-    pub generated_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageLogsChunkMetadata {
+    #[serde(rename = "chunkId")]
     pub chunk_id: u64,
     // can be either a gs or filesystem path
     pub filepath: String,

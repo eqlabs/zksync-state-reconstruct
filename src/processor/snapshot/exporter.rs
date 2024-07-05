@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use chrono::offset::Utc;
 use ethers::types::U256;
 use eyre::Result;
 use state_reconstruct_storage::{
@@ -40,7 +39,6 @@ impl SnapshotExporter {
         let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number,
-            generated_at: Utc::now(),
             ..Default::default()
         };
 
