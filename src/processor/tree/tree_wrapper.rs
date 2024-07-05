@@ -19,7 +19,6 @@ use zksync_merkle_tree::{Database, MerkleTree, RocksDBWrapper, TreeEntry};
 use zksync_storage::{RocksDB, RocksDBOptions};
 
 use super::RootHash;
-use crate::processor::snapshot::DEFAULT_CHUNK_SIZE;
 
 #[derive(Error, Debug)]
 pub enum TreeError {
@@ -148,7 +147,7 @@ impl TreeWrapper {
             async move {
                 let mut inner_db = inner_db.lock().await;
                 while let Some(chunk) = rx.recv().await {
-                    let mut tree_entries = Vec::with_capacity(DEFAULT_CHUNK_SIZE);
+                    let mut tree_entries = Vec::new();
 
                     for log in &chunk.storage_logs {
                         tree_entries.push(TreeEntry::new(

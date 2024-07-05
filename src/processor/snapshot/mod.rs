@@ -24,7 +24,7 @@ use super::Processor;
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
-pub const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
+pub const DEFAULT_NUM_CHUNKS: usize = 10;
 
 pub struct SnapshotBuilder {
     database: SnapshotDatabase,

@@ -35,14 +35,14 @@ impl SnapshotExporter {
         })
     }
 
-    pub fn export_snapshot(&self, chunk_size: usize) -> Result<()> {
+    pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
         let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number,
             ..Default::default()
         };
 
-        self.export_storage_logs(chunk_size, &mut header)?;
+        self.export_storage_logs(num_chunks, &mut header)?;
         self.export_factory_deps(&mut header)?;
 
         let path = self.basedir.join(SNAPSHOT_HEADER_FILE_NAME);
@@ -89,7 +89,7 @@ impl SnapshotExporter {
         Ok(())
     }
 
-    fn export_storage_logs(&self, chunk_size: usize, header: &mut SnapshotHeader) -> Result<()> {
+    fn export_storage_logs(&self, num_chunks: usize, header: &mut SnapshotHeader) -> Result<()> {
         tracing::info!("Exporting storage logs...");
 
         let num_logs = self.database.get_last_repeated_key_index()?;
@@ -100,9 +100,9 @@ impl SnapshotExporter {
             .database
             .iterator_cf(index_to_key_map, rocksdb::IteratorMode::Start);
 
-        let total_num_chunks = (num_logs / chunk_size as u64) + 1;
-        for chunk_id in 0..total_num_chunks {
-            tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, total_num_chunks);
+        let chunk_size = num_logs / num_chunks as u64;
+        for chunk_id in 0..num_chunks {
+            tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, num_chunks);
 
             let mut chunk = SnapshotStorageLogsChunk::default();
             for _ in 0..chunk_size {
@@ -123,7 +123,7 @@ impl SnapshotExporter {
             header
                 .storage_logs_chunks
                 .push(SnapshotStorageLogsChunkMetadata {
-                    chunk_id,
+                    chunk_id: chunk_id as u64,
                     filepath: path
                         .clone()
                         .into_os_string()
