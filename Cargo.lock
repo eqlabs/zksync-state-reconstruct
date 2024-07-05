@@ -4196,6 +4196,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_repr"
+version = "0.1.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c64451ba24fc7a6a2d60fc75dd9c83c90903b19028d4eff35e88fc1e86564e9"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.53",
+]
+
+[[package]]
 name = "serde_urlencoded"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4490,6 +4501,7 @@ dependencies = [
  "prost-build",
  "rocksdb",
  "serde",
+ "serde_repr",
  "thiserror",
  "zkevm_opcode_defs 1.3.2 (git+https://github.com/matter-labs/era-zkevm_opcode_defs.git)",
 ]

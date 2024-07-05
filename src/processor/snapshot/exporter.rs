@@ -38,7 +38,7 @@ impl SnapshotExporter {
     pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
         let l1_batch_number = self.database.get_latest_l1_batch_number()?;
         let mut header = SnapshotHeader {
-            l1_batch_number,
+            l1_batch_number: l1_batch_number.as_u64(),
             ..Default::default()
         };
 

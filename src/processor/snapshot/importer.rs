@@ -47,7 +47,7 @@ impl SnapshotImporter {
         let mut tree = TreeWrapper::new_snapshot_wrapper(db_path)
             .await
             .expect("can't create tree");
-        tree.restore_from_snapshot(rx, header.l1_batch_number)
+        tree.restore_from_snapshot(rx, U64::from(header.l1_batch_number))
             .await?;
 
         Ok(())
@@ -151,7 +151,7 @@ impl SnapshotImporter {
         }
 
         Ok(SnapshotHeader {
-            l1_batch_number: l1_batch_number.expect("no l1 batch number found"),
+            l1_batch_number: l1_batch_number.expect("no l1 batch number found").as_u64(),
             storage_logs_chunks,
             factory_deps_filepath,
             ..Default::default()

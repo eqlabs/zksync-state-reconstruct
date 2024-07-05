@@ -9,6 +9,7 @@ use eyre::Result;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use prost::Message;
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::bytecode;
 
@@ -73,16 +74,14 @@ pub trait Proto {
 }
 
 /// Version of snapshot influencing the format of data stored in GCS.
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, Serialize_repr, Deserialize_repr)]
 #[repr(u16)]
 pub enum SnapshotVersion {
     /// Initial snapshot version. Keys in storage logs are stored as `(address, key)` pairs.
-    #[serde(rename = "0")]
     Version0 = 0,
     /// Snapshot version made compatible with L1 recovery. Differs from `Version0` by including
     /// hashed keys in storage logs instead of `(address, key)` pairs.
     #[default]
-    #[serde(rename = "1")]
     Version1 = 1,
 }
 
@@ -90,9 +89,9 @@ pub enum SnapshotVersion {
 pub struct SnapshotHeader {
     pub version: SnapshotVersion,
     #[serde(rename = "l1BatchNumber")]
-    pub l1_batch_number: L1BatchNumber,
+    pub l1_batch_number: u64,
     #[serde(rename = "miniblockNumber")]
-    pub miniblock_number: MiniblockNumber,
+    pub miniblock_number: u64,
     // ordered by chunk_id
     #[serde(rename = "storageLogsChunks")]
     pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
