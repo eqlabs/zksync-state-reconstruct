@@ -36,6 +36,8 @@ impl SnapshotDatabase {
                 KEY_TO_INDEX_MAP,
                 snapshot_columns::STORAGE_LOGS,
                 snapshot_columns::FACTORY_DEPS,
+                snapshot_columns::LATEST_L1_BATCH,
+                snapshot_columns::LATEST_L2_BATCH,
             ],
         )?;
 
@@ -56,6 +58,8 @@ impl SnapshotDatabase {
                 KEY_TO_INDEX_MAP,
                 snapshot_columns::STORAGE_LOGS,
                 snapshot_columns::FACTORY_DEPS,
+                snapshot_columns::LATEST_L1_BATCH,
+                snapshot_columns::LATEST_L2_BATCH,
             ],
             false,
         )?;
@@ -157,6 +161,15 @@ impl SnapshotDatabase {
 
     pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
         self.set_metadata_value(snapshot_columns::LATEST_L1_BATCH, number)
+    }
+
+    pub fn get_latest_l2_batch_number(&self) -> Result<U64> {
+        self.get_metadata_value(snapshot_columns::LATEST_L2_BATCH)
+            .map(U64::from)
+    }
+
+    pub fn set_latest_l2_batch_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(snapshot_columns::LATEST_L2_BATCH, number)
     }
 
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {

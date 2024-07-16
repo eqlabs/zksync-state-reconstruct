@@ -20,3 +20,5 @@ StateSnapshot.json
 
 # Markdown linting rules.
 .markdownlint.json
+
+.DS_Store

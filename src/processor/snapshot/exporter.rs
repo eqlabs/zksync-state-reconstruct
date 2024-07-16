@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use ethers::types::U256;
 use eyre::Result;
+use state_reconstruct_fetcher::constants::ethereum::GENESIS_BLOCK;
 use state_reconstruct_storage::{
     snapshot::SnapshotDatabase,
     snapshot_columns,
@@ -36,9 +37,14 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
-        let l1_batch_number = self.database.get_latest_l1_batch_number()?;
+        let latest_l1_batch_number = self.database.get_latest_l1_batch_number()?;
+        // L1 batch number is calculated from the batch number where the
+        // DiamondProxy contract was deployed (`GENESIS_BLOCK`).
+        let l1_batch_number = latest_l1_batch_number - GENESIS_BLOCK;
+        let l2_batch_number = self.database.get_latest_l2_batch_number()?;
         let mut header = SnapshotHeader {
             l1_batch_number: l1_batch_number.as_u64(),
+            miniblock_number: l2_batch_number.as_u64(),
             ..Default::default()
         };
 
