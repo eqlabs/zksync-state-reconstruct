@@ -4,12 +4,12 @@ use std::{
 };
 
 use bytes::BytesMut;
-use chrono::{offset::Utc, DateTime};
 use ethers::types::{H256, U256, U64};
 use eyre::Result;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use prost::Message;
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 use super::bytecode;
 
@@ -20,7 +20,7 @@ pub type StorageKey = U256;
 pub type StorageValue = H256;
 
 pub mod protobuf {
-    include!(concat!(env!("OUT_DIR"), "/protobuf.rs"));
+    include!(concat!(env!("OUT_DIR"), "/zksync.types.rs"));
 }
 
 pub trait Proto {
@@ -73,19 +73,31 @@ pub trait Proto {
     }
 }
 
-#[derive(Clone, Default, Debug, Serialize, Deserialize)]
-pub struct SnapshotHeader {
-    pub l1_batch_number: L1BatchNumber,
-    pub miniblock_number: MiniblockNumber,
-    // ordered by chunk_id
-    pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
-    pub factory_deps_filepath: String,
-    // Following `L1BatchWithMetadata` type doesn't have definition. Ignoring.
-    //pub last_l1_batch_with_metadata: L1BatchWithMetadata,
-    pub generated_at: DateTime<Utc>,
+/// Version of snapshot influencing the format of data stored in GCS.
+#[derive(Clone, Default, Debug, Serialize_repr, Deserialize_repr)]
+#[repr(u16)]
+pub enum SnapshotVersion {
+    /// Initial snapshot version. Keys in storage logs are stored as `(address, key)` pairs.
+    Version0 = 0,
+    /// Snapshot version made compatible with L1 recovery. Differs from `Version0` by including
+    /// hashed keys in storage logs instead of `(address, key)` pairs.
+    #[default]
+    Version1 = 1,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotHeader {
+    pub version: SnapshotVersion,
+    pub l1_batch_number: u64,
+    pub miniblock_number: u64,
+    // ordered by chunk_id
+    pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
+    pub factory_deps_filepath: String,
+}
+
+#[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotStorageLogsChunkMetadata {
     pub chunk_id: u64,
     // can be either a gs or filesystem path
@@ -133,7 +145,6 @@ impl Proto for SnapshotStorageLogsChunk {
 pub struct SnapshotStorageLog {
     pub key: StorageKey,
     pub value: StorageValue,
-    pub miniblock_number_of_initial_write: MiniblockNumber,
     pub l1_batch_number_of_initial_write: L1BatchNumber,
     pub enumeration_index: u64,
 }
@@ -147,7 +158,8 @@ impl Proto for SnapshotStorageLog {
 
         Self::ProtoStruct {
             account_address: None,
-            storage_key: Some(key.to_vec()),
+            storage_key: None,
+            hashed_key: Some(key.to_vec()),
             storage_value: Some(self.value.as_bytes().to_vec()),
             l1_batch_number_of_initial_write: Some(self.l1_batch_number_of_initial_write.as_u32()),
             enumeration_index: Some(self.enumeration_index),
@@ -159,7 +171,6 @@ impl Proto for SnapshotStorageLog {
         Ok(Self {
             key: U256::from_big_endian(proto.storage_key()),
             value: StorageValue::from(&value_bytes),
-            miniblock_number_of_initial_write: U64::from(0),
             l1_batch_number_of_initial_write: proto.l1_batch_number_of_initial_write().into(),
             enumeration_index: proto.enumeration_index(),
         })

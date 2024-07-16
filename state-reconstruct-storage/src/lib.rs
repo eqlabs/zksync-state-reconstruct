@@ -26,6 +26,8 @@ pub mod snapshot_columns {
     pub const LAST_REPEATED_KEY_INDEX: &str = "SNAPSHOT_LAST_REPEATED_KEY_INDEX";
     /// The latest l1 block number that was processed.
     pub const LATEST_L1_BATCH: &str = "SNAPSHOT_LATEST_L1_BATCH";
+    /// The latest l2 block number that was processed.
+    pub const LATEST_L2_BATCH: &str = "SNAPSHOT_LATEST_L2_BATCH";
 }
 
 // NOTE: This is moved here as a temporary measure to resolve a cyclic dependency issue.

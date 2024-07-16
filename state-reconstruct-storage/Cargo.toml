@@ -13,6 +13,7 @@ ethers = "1.0.2"
 eyre = "0.6.8"
 flate2 = "1.0.28"
 serde = { version = "1.0.189", features = ["derive"] }
+serde_repr = "0.1.19"
 prost = "0.12.4"
 rocksdb = "0.21.0"
 thiserror = "1.0.50"

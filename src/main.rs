@@ -181,13 +181,13 @@ async fn main() -> Result<()> {
         }
         Command::ExportSnapshot {
             db_path,
-            chunk_size,
+            num_chunks,
             directory,
         } => {
             let export_path = Path::new(&directory);
             std::fs::create_dir_all(export_path)?;
             let exporter = SnapshotExporter::new(export_path, db_path)?;
-            exporter.export_snapshot(chunk_size)?;
+            exporter.export_snapshot(num_chunks)?;
 
             tracing::info!("Succesfully exported snapshot files to \"{directory}\"!");
         }

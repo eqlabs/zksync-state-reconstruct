@@ -6,13 +6,14 @@ use std::{
 use ethers::types::U64;
 use eyre::Result;
 use regex::{Captures, Regex};
+use state_reconstruct_fetcher::constants::ethereum::GENESIS_BLOCK;
 use state_reconstruct_storage::types::{
     Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
     SnapshotStorageLogsChunkMetadata,
 };
 use tokio::sync::mpsc::{self, Sender};
 
-use super::{SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME};
+use super::SNAPSHOT_HEADER_FILE_NAME;
 use crate::processor::tree::tree_wrapper::TreeWrapper;
 
 const SNAPSHOT_CHUNK_REGEX: &str = r"snapshot_l1_batch_(\d*)_storage_logs_part_\d*.proto.gzip";
@@ -31,23 +32,25 @@ impl SnapshotImporter {
     pub async fn run(self, db_path: &Path) -> Result<()> {
         let (tx, rx) = mpsc::channel(1);
 
-        let header = self.read_header()?;
-        let _factory_deps = self.read_factory_deps(&header)?;
+        let header = self.read_header().expect("failed to read header filepath");
+        let _factory_deps =
+            Self::read_factory_deps(&header).expect("failed to read factory deps filepath");
 
         // Read storage logs async sending each read one into the tree to process.
         tokio::spawn({
             let header = header.clone();
             async move {
-                self.read_storage_logs_chunks_async(&header, tx)
+                Self::read_storage_logs_chunks_async(&header, tx)
                     .await
                     .expect("failed to read storage_logs_chunks");
             }
         });
 
+        let l1_batch_number = header.l1_batch_number + GENESIS_BLOCK;
         let mut tree = TreeWrapper::new_snapshot_wrapper(db_path)
             .await
             .expect("can't create tree");
-        tree.restore_from_snapshot(rx, header.l1_batch_number)
+        tree.restore_from_snapshot(rx, U64::from(l1_batch_number))
             .await?;
 
         Ok(())
@@ -65,17 +68,13 @@ impl SnapshotImporter {
         Ok(header)
     }
 
-    fn read_factory_deps(&self, header: &SnapshotHeader) -> Result<SnapshotFactoryDependencies> {
-        let factory_deps_path = self.directory.join(format!(
-            "snapshot_l1_batch_{}_{}",
-            header.l1_batch_number, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX
-        ));
+    fn read_factory_deps(header: &SnapshotHeader) -> Result<SnapshotFactoryDependencies> {
+        let factory_deps_path = header.factory_deps_filepath.clone();
         let bytes = fs::read(factory_deps_path)?;
         SnapshotFactoryDependencies::decode(&bytes)
     }
 
     async fn read_storage_logs_chunks_async(
-        &self,
         header: &SnapshotHeader,
         tx: Sender<SnapshotStorageLogsChunk>,
     ) -> Result<()> {
@@ -88,10 +87,7 @@ impl SnapshotImporter {
 
         let total_chunks = filepaths.len();
         for (i, path) in filepaths.into_iter().enumerate() {
-            let factory_deps_path = self
-                .directory
-                .join(path.file_name().expect("path has no file name"));
-            let bytes = fs::read(factory_deps_path)?;
+            let bytes = fs::read(path)?;
             let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&bytes)?;
             tracing::info!("Read chunk {}/{}, processing...", i + 1, total_chunks);
             tx.send(storage_logs_chunk).await?;
@@ -151,7 +147,7 @@ impl SnapshotImporter {
         }
 
         Ok(SnapshotHeader {
-            l1_batch_number: l1_batch_number.expect("no l1 batch number found"),
+            l1_batch_number: l1_batch_number.expect("no l1 batch number found").as_u64(),
             storage_logs_chunks,
             factory_deps_filepath,
             ..Default::default()

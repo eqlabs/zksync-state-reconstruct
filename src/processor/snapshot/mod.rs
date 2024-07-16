@@ -15,7 +15,7 @@ use state_reconstruct_fetcher::{
 };
 use state_reconstruct_storage::{
     bytecode,
-    types::{MiniblockNumber, SnapshotFactoryDependency, SnapshotStorageLog},
+    types::{SnapshotFactoryDependency, SnapshotStorageLog},
 };
 use tokio::sync::mpsc;
 
@@ -24,7 +24,7 @@ use super::Processor;
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
-pub const DEFAULT_CHUNK_SIZE: usize = 1_000_000;
+pub const DEFAULT_NUM_CHUNKS: usize = 10;
 
 pub struct SnapshotBuilder {
     database: SnapshotDatabase,
@@ -73,7 +73,6 @@ impl Processor for SnapshotBuilder {
                     .insert_storage_log(&mut SnapshotStorageLog {
                         key: *key,
                         value,
-                        miniblock_number_of_initial_write: U64::from(0),
                         l1_batch_number_of_initial_write: U64::from(
                             block.l1_block_number.unwrap_or(0),
                         ),
@@ -120,6 +119,10 @@ impl Processor for SnapshotBuilder {
                     })
                     .expect("failed to save factory dep");
             }
+
+            let _ = self
+                .database
+                .set_latest_l2_batch_number(block.l2_block_number);
 
             if let Some(number) = block.l1_block_number {
                 let _ = self.database.set_latest_l1_batch_number(number);
@@ -202,7 +205,7 @@ fn reconstruct_genesis_state(database: &mut SnapshotDatabase, path: &str) -> Res
 
     tracing::trace!("Have {} unique keys in the tree", key_set.len());
 
-    for (address, key, value, miniblock_number) in batched {
+    for (address, key, value, _miniblock_number) in batched {
         let derived_key = derive_final_address_for_params(&address, &key);
         let mut tmp = [0u8; 32];
         value.to_big_endian(&mut tmp);
@@ -213,7 +216,6 @@ fn reconstruct_genesis_state(database: &mut SnapshotDatabase, path: &str) -> Res
         database.insert_storage_log(&mut SnapshotStorageLog {
             key,
             value,
-            miniblock_number_of_initial_write: MiniblockNumber::from(miniblock_number),
             l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
             enumeration_index: 0,
         })?;
