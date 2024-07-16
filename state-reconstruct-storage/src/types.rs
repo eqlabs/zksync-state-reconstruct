@@ -86,22 +86,19 @@ pub enum SnapshotVersion {
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotHeader {
     pub version: SnapshotVersion,
-    #[serde(rename = "l1BatchNumber")]
     pub l1_batch_number: u64,
-    #[serde(rename = "miniblockNumber")]
     pub miniblock_number: u64,
     // ordered by chunk_id
-    #[serde(rename = "storageLogsChunks")]
     pub storage_logs_chunks: Vec<SnapshotStorageLogsChunkMetadata>,
-    #[serde(rename = "factoryDepsFilepath")]
     pub factory_deps_filepath: String,
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SnapshotStorageLogsChunkMetadata {
-    #[serde(rename = "chunkId")]
     pub chunk_id: u64,
     // can be either a gs or filesystem path
     pub filepath: String,
