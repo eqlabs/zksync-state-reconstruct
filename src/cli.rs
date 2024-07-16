@@ -109,7 +109,7 @@ pub enum Command {
         /// The path to the storage solution.
         #[arg(short, long, default_value = snapshot::DEFAULT_DB_PATH)]
         db_path: Option<String>,
-        /// Number of storage logs to stuff into one chunk.
+        /// Number of chunks to split storage chunks into.
         #[arg(short, long, default_value_t = snapshot::DEFAULT_NUM_CHUNKS)]
         num_chunks: usize,
         /// The directory to export the snapshot files to.
