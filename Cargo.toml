@@ -7,6 +7,9 @@ edition = "2021"
 [workspace]
 members = ["state-reconstruct-fetcher", "state-reconstruct-storage"]
 
+[profile.release]
+panic = 'abort'
+
 [dependencies]
 async-trait = "0.1.74"
 bincode = "1"
