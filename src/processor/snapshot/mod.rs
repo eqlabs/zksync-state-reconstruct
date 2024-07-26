@@ -10,7 +10,7 @@ use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::{ethereum, storage},
+    constants::{ethereum, storage, zksync::L2_BLOCK_NUMBER_ADDRESS},
     types::CommitBlock,
 };
 use state_reconstruct_storage::{
@@ -20,6 +20,7 @@ use state_reconstruct_storage::{
 use tokio::sync::mpsc;
 
 use super::Processor;
+use crate::util::{h256_to_u256, unpack_block_info};
 
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
@@ -54,7 +55,9 @@ impl SnapshotBuilder {
 
     // Gets the next L1 batch number to be processed for ues in state recovery.
     pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
-        self.database.get_latest_l1_batch_number()
+        self.database
+            .get_latest_l1_batch_number()
+            .map(|o| o.unwrap_or(U64::from(0)))
     }
 }
 
@@ -93,6 +96,14 @@ impl Processor for SnapshotBuilder {
                     .process_value(U256::from_big_endian(&key[0..32]), *value)
                     .expect("failed to get key from database");
 
+                // We make sure to track writes to the L2 block number address.
+                if hex::encode(key) == L2_BLOCK_NUMBER_ADDRESS {
+                    let (block_number, _timestamp) = unpack_block_info(h256_to_u256(value));
+                    self.database
+                        .set_latest_l2_block_number(block_number)
+                        .expect("failed to insert latest l2 block number");
+                }
+
                 if self
                     .database
                     .update_storage_log_value(index as u64, &value.to_fixed_bytes())
@@ -122,10 +133,10 @@ impl Processor for SnapshotBuilder {
 
             let _ = self
                 .database
-                .set_latest_l2_batch_number(block.l2_block_number);
+                .set_latest_l2_block_number(block.l2_block_number);
 
             if let Some(number) = block.l1_block_number {
-                let _ = self.database.set_latest_l1_batch_number(number);
+                let _ = self.database.set_latest_l2_batch_number(number);
             };
         }
     }

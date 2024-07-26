@@ -34,10 +34,14 @@ pub mod zksync {
     pub const L2_TO_L1_LOG_SERIALIZE_SIZE: usize = 88;
     // The bitmask by applying which to the compressed state diff metadata we retrieve its operation.
     pub const OPERATION_BITMASK: u8 = 7;
-    // The number of bits shifting the compressed state diff metadata by which we retrieve its length.
+    /// The number of bits shifting the compressed state diff metadata by which we retrieve its length.
     pub const LENGTH_BITS_OFFSET: u8 = 3;
-    // Size of `CommitBatchInfo.pubdataCommitments` item.
+    /// Size of `CommitBatchInfo.pubdataCommitments` item.
     pub const PUBDATA_COMMITMENT_SIZE: usize = 144;
-    // The number of trailing bytes to ignore when using calldata post-blobs. Contains unused blob commitments.
+    /// The number of trailing bytes to ignore when using calldata post-blobs. Contains unused blob commitments.
     pub const CALLDATA_SOURCE_TAIL_SIZE: usize = 32;
+
+    /// The storage address where the latest L2 block number is written to.
+    pub const L2_BLOCK_NUMBER_ADDRESS: &str =
+        "5e5a67d1b864c576f39bb2b77c6537744c0f03515abce63b473bb7c56ad07d8e";
 }

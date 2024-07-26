@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use ethers::types::U256;
+use ethers::types::{U256, U64};
 use eyre::Result;
-use state_reconstruct_fetcher::constants::ethereum::GENESIS_BLOCK;
 use state_reconstruct_storage::{
     snapshot::SnapshotDatabase,
     snapshot_columns,
@@ -37,14 +36,17 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
-        let latest_l1_batch_number = self.database.get_latest_l1_batch_number()?;
-        // L1 batch number is calculated from the batch number where the
-        // DiamondProxy contract was deployed (`GENESIS_BLOCK`).
-        let l1_batch_number = latest_l1_batch_number - GENESIS_BLOCK;
-        let l2_batch_number = self.database.get_latest_l2_batch_number()?;
+        let l2_batch_number = self
+            .database
+            .get_latest_l2_batch_number()?
+            .expect("db contains no l2 batch number");
+        let l2_block_number = self.database.get_latest_l2_block_number()?.unwrap_or({
+            tracing::warn!("WARNING: the database contains no l2 block number entry and will not be compatible with the ZKSync External Node! To export a compatible snapshot, please let the prepare-snapshot command run until an l2 block number can be found.");
+            U64::from(0)
+        });
         let mut header = SnapshotHeader {
-            l1_batch_number: l1_batch_number.as_u64(),
-            miniblock_number: l2_batch_number.as_u64(),
+            l1_batch_number: l2_batch_number.as_u64(),
+            miniblock_number: l2_block_number.as_u64(),
             ..Default::default()
         };
 
