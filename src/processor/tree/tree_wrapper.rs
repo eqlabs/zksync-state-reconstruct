@@ -100,6 +100,12 @@ impl TreeWrapper {
             self.insert_known_key(index, key);
             let value = self.process_value(key, *value);
 
+            let mut tmp_bytes = [0u8; 32];
+            key.to_big_endian(&mut tmp_bytes);
+
+            println!("KEY: {}", hex::encode(tmp_bytes));
+            println!("VAL: {}", hex::encode(value));
+
             tree_entries.push(TreeEntry::new(key, index, value));
         }
 
@@ -114,8 +120,9 @@ impl TreeWrapper {
 
         let root_hash_bytes = root_hash.as_bytes();
         if root_hash_bytes == block.new_state_root {
-            tracing::debug!("Successfully processed block {}", block.l2_block_number);
+            println!("NUM: {}", block.l2_block_number);
 
+            tracing::debug!("Successfully processed block {}", block.l2_block_number);
             Ok(root_hash)
         } else {
             tracing::error!(
