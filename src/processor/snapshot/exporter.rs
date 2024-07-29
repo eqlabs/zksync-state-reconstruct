@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use ethers::types::{U256, U64};
-use eyre::Result;
+use eyre::{OptionExt, Result};
 use state_reconstruct_storage::{
     snapshot::SnapshotDatabase,
     snapshot_columns,
@@ -39,7 +39,7 @@ impl SnapshotExporter {
         let l2_batch_number = self
             .database
             .get_latest_l2_batch_number()?
-            .expect("db contains no l2 batch number");
+            .ok_or_eyre("no latest l2 batch number in snapshot db")?;
         let l2_block_number = self.database.get_latest_l2_block_number()?.unwrap_or({
             tracing::warn!("WARNING: the database contains no l2 block number entry and will not be compatible with the ZKSync External Node! To export a compatible snapshot, please let the prepare-snapshot command run until an l2 block number can be found.");
             U64::from(0)
