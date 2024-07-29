@@ -136,7 +136,7 @@ impl Processor for SnapshotBuilder {
                 .set_latest_l2_block_number(block.l2_block_number);
 
             if let Some(number) = block.l1_block_number {
-                let _ = self.database.set_latest_l2_batch_number(number);
+                let _ = self.database.set_latest_l1_batch_number(number);
             };
         }
     }
