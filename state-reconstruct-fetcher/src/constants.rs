@@ -32,7 +32,7 @@ pub mod storage {
 pub mod zksync {
     /// Bytes in raw L2 to L1 log.
     pub const L2_TO_L1_LOG_SERIALIZE_SIZE: usize = 88;
-    // The bitmask by applying which to the compressed state diff metadata we retrieve its operation.
+    /// The bitmask by applying which to the compressed state diff metadata we retrieve its operation.
     pub const OPERATION_BITMASK: u8 = 7;
     /// The number of bits shifting the compressed state diff metadata by which we retrieve its length.
     pub const LENGTH_BITS_OFFSET: u8 = 3;
