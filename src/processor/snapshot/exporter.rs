@@ -45,6 +45,10 @@ impl SnapshotExporter {
             U64::from(0)
         });
         let mut header = SnapshotHeader {
+            // NOTE: `l1_batch_number` in the snapshot header actually refers
+            // to the ZKsync batch number and not the Ethereum batch height we
+            // store in the snapshot database. In the snapshot database this
+            // field is referred to as `l2_batch_number`.
             l1_batch_number: l2_batch_number.as_u64(),
             miniblock_number: l2_block_number.as_u64(),
             ..Default::default()
