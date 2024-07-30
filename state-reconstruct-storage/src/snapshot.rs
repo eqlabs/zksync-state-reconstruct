@@ -38,6 +38,7 @@ impl SnapshotDatabase {
                 snapshot_columns::FACTORY_DEPS,
                 snapshot_columns::LATEST_L1_BATCH,
                 snapshot_columns::LATEST_L2_BATCH,
+                snapshot_columns::LATEST_L2_BLOCK,
             ],
         )?;
 
@@ -60,6 +61,7 @@ impl SnapshotDatabase {
                 snapshot_columns::FACTORY_DEPS,
                 snapshot_columns::LATEST_L1_BATCH,
                 snapshot_columns::LATEST_L2_BATCH,
+                snapshot_columns::LATEST_L2_BLOCK,
             ],
             false,
         )?;
@@ -154,50 +156,56 @@ impl SnapshotDatabase {
             .map_err(Into::into)
     }
 
-    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+    pub fn get_latest_l1_batch_number(&self) -> Result<Option<U64>> {
         self.get_metadata_value(snapshot_columns::LATEST_L1_BATCH)
-            .map(U64::from)
+            .map(|o| o.map(U64::from))
     }
 
     pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
         self.set_metadata_value(snapshot_columns::LATEST_L1_BATCH, number)
     }
 
-    pub fn get_latest_l2_batch_number(&self) -> Result<U64> {
+    pub fn get_latest_l2_batch_number(&self) -> Result<Option<U64>> {
         self.get_metadata_value(snapshot_columns::LATEST_L2_BATCH)
-            .map(U64::from)
+            .map(|o| o.map(U64::from))
     }
 
     pub fn set_latest_l2_batch_number(&self, number: u64) -> Result<()> {
         self.set_metadata_value(snapshot_columns::LATEST_L2_BATCH, number)
     }
 
+    pub fn get_latest_l2_block_number(&self) -> Result<Option<U64>> {
+        self.get_metadata_value(snapshot_columns::LATEST_L2_BLOCK)
+            .map(|o| o.map(U64::from))
+    }
+
+    pub fn set_latest_l2_block_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(snapshot_columns::LATEST_L2_BLOCK, number)
+    }
+
     pub fn get_last_repeated_key_index(&self) -> Result<u64> {
         self.get_metadata_value(snapshot_columns::LAST_REPEATED_KEY_INDEX)
+            .map(|o| o.unwrap_or(0))
     }
 
     pub fn set_last_repeated_key_index(&self, idx: u64) -> Result<()> {
         self.set_metadata_value(snapshot_columns::LAST_REPEATED_KEY_INDEX, idx)
     }
 
-    fn get_metadata_value(&self, value_name: &str) -> Result<u64> {
+    fn get_metadata_value(&self, value_name: &str) -> Result<Option<u64>> {
         let metadata = self.cf_handle(METADATA).unwrap();
-        Ok(
-            if let Some(idx_bytes) = self.get_cf(metadata, value_name)? {
-                u64::from_be_bytes([
-                    idx_bytes[0],
-                    idx_bytes[1],
-                    idx_bytes[2],
-                    idx_bytes[3],
-                    idx_bytes[4],
-                    idx_bytes[5],
-                    idx_bytes[6],
-                    idx_bytes[7],
-                ])
-            } else {
-                0
-            },
-        )
+        Ok(self.get_cf(metadata, value_name)?.map(|idx_bytes| {
+            u64::from_be_bytes([
+                idx_bytes[0],
+                idx_bytes[1],
+                idx_bytes[2],
+                idx_bytes[3],
+                idx_bytes[4],
+                idx_bytes[5],
+                idx_bytes[6],
+                idx_bytes[7],
+            ])
+        }))
     }
 
     fn set_metadata_value(&self, value_name: &str, value: u64) -> Result<()> {
