@@ -65,16 +65,16 @@ impl Processor for TreeProcessor {
         let mut snapshot_metric = PerfMetric::new("snapshot");
         while let Some(block) = rx.recv().await {
             // Check if we've already processed this block.
-            let latest_l2 = self
+            let latest_l1_batch = self
                 .inner_db
                 .lock()
                 .await
-                .get_latest_l2_batch_number()
+                .get_latest_l1_batch_number()
                 .expect("value should default to 0");
-            if latest_l2 >= block.l2_block_number {
+            if latest_l1_batch >= block.l1_batch_number {
                 tracing::debug!(
-                    "Block {} has already been processed, skipping.",
-                    block.l2_block_number
+                    "Batch {} has already been processed, skipping.",
+                    block.l1_batch_number
                 );
                 continue;
             }
@@ -92,7 +92,7 @@ impl Processor for TreeProcessor {
             self.inner_db
                 .lock()
                 .await
-                .set_latest_l2_batch_number(block.l2_block_number)
+                .set_latest_l1_batch_number(block.l1_batch_number)
                 .expect("db failed");
 
             if snapshot_metric.add(before.elapsed()) > 10 {

@@ -7,13 +7,13 @@ pub const METRICS_TRACING_TARGET: &str = "metrics";
 pub struct L1Metrics {
     /// The first L1 block fetched.
     pub first_l1_block_num: u64,
-    /// The first L2 block fetched.
-    pub first_l2_block_num: u64,
+    /// The first L2 batch fetched.
+    pub first_l1_batch_num: u64,
 
     /// The latest L1 block fetched.
     pub latest_l1_block_num: u64,
     /// The latest L2 block fetched.
-    pub latest_l2_block_num: u64,
+    pub latest_l1_batch_num: u64,
 
     /// The first L1 block to compare against when measuring progress.
     pub initial_l1_block: u64,
@@ -32,9 +32,9 @@ impl L1Metrics {
     pub fn new(initial_l1_block: u64) -> Self {
         L1Metrics {
             first_l1_block_num: 0,
-            first_l2_block_num: 0,
+            first_l1_batch_num: 0,
             latest_l1_block_num: 0,
-            latest_l2_block_num: 0,
+            latest_l1_batch_num: 0,
             initial_l1_block,
             last_l1_block: 0,
             log_acquisition: PerfMetric::new("log_acquisition"),
@@ -62,13 +62,13 @@ impl L1Metrics {
         };
 
         tracing::info!(
-            "PROGRESS: [{}] CUR BLOCK L1: {} L2: {} TOTAL BLOCKS PROCESSED L1: {} L2: {}",
+            "PROGRESS: [{}] CUR L1 BLOCK: {} L2 BATCH: {} TOTAL PROCESSED L1 BLOCKS: {} L2 BATCHES: {}",
             progress,
             self.latest_l1_block_num,
-            self.latest_l2_block_num,
+            self.latest_l1_batch_num,
             self.latest_l1_block_num - self.first_l1_block_num,
-            self.latest_l2_block_num
-                .saturating_sub(self.first_l2_block_num)
+            self.latest_l1_batch_num
+                .saturating_sub(self.first_l1_batch_num)
         );
 
         let log_acquisition = self.log_acquisition.reset();

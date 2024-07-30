@@ -134,7 +134,7 @@ impl L1Fetcher {
         if current_l1_block_number == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.inner_db {
                 let snapshot_latest_l1_block_number =
-                    snapshot.lock().await.get_latest_l1_batch_number()?;
+                    snapshot.lock().await.get_latest_l1_block_number()?;
                 if snapshot_latest_l1_block_number > current_l1_block_number {
                     current_l1_block_number = snapshot_latest_l1_block_number;
                     tracing::info!(
@@ -155,8 +155,8 @@ impl L1Fetcher {
             metrics.first_l1_block_num = current_l1_block_number.as_u64();
             metrics.latest_l1_block_num = current_l1_block_number.as_u64();
             if let Some(snapshot) = &self.inner_db {
-                metrics.latest_l2_block_num = snapshot.lock().await.get_latest_l2_batch_number()?;
-                metrics.first_l2_block_num = metrics.latest_l2_block_num;
+                metrics.latest_l1_batch_num = snapshot.lock().await.get_latest_l1_batch_number()?;
+                metrics.first_l1_batch_num = metrics.latest_l1_batch_num;
             }
         }
 
@@ -225,7 +225,7 @@ impl L1Fetcher {
                 snapshot
                     .lock()
                     .await
-                    .set_latest_l1_batch_number(block_num)?;
+                    .set_latest_l1_block_number(block_num)?;
             }
 
             // Fetching is naturally ahead of parsing, but the data
@@ -268,7 +268,7 @@ impl L1Fetcher {
 
         Ok(tokio::spawn({
             async move {
-                let mut latest_l2_block_number = U256::zero();
+                let mut latest_zksync_batch_number = U256::zero();
                 let mut previous_hash = None;
                 let mut end_block = None;
                 loop {
@@ -350,9 +350,9 @@ impl L1Fetcher {
                             // topics[2]: L2 block hash.
                             // topics[3]: L2 commitment.
 
-                            let new_l2_block_number =
+                            let new_l1_batch_number =
                                 U256::from_big_endian(log.topics[1].as_fixed_bytes());
-                            if new_l2_block_number <= latest_l2_block_number {
+                            if new_l1_batch_number <= latest_zksync_batch_number {
                                 continue;
                             }
 
@@ -381,7 +381,7 @@ impl L1Fetcher {
                                 previous_hash = Some(tx_hash);
                             }
 
-                            latest_l2_block_number = new_l2_block_number;
+                            latest_zksync_batch_number = new_l1_batch_number;
                         }
                     } else {
                         cancellation_token.cancelled_else_long_timeout().await;
@@ -558,7 +558,7 @@ impl L1Fetcher {
 
                     let mut metrics = metrics.lock().await;
                     for blk in blocks {
-                        metrics.latest_l2_block_num = blk.l2_block_number;
+                        metrics.latest_l1_batch_num = blk.l1_batch_number;
                         if let Err(e) = sink.send(blk).await {
                             if cancellation_token.is_cancelled() {
                                 tracing::debug!("Shutting down parsing task...");
@@ -638,9 +638,9 @@ pub async fn parse_calldata(
         ));
     };
 
-    let abi::Token::Uint(_previous_l2_block_number) = stored_block_info[0].clone() else {
+    let abi::Token::Uint(_previous_l1_batch_number) = stored_block_info[0].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
-            "cannot parse previous L2 block number".to_string(),
+            "cannot parse previous L1 block number".to_string(),
         ));
     };
 

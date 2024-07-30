@@ -36,20 +36,16 @@ impl SnapshotExporter {
     }
 
     pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
-        let l2_batch_number = self
+        let l1_batch_number = self
             .database
-            .get_latest_l2_batch_number()?
-            .ok_or_eyre("no latest l2 batch number in snapshot db")?;
+            .get_latest_l1_batch_number()?
+            .ok_or_eyre("no latest l1 batch number in snapshot db")?;
         let l2_block_number = self.database.get_latest_l2_block_number()?.unwrap_or({
             tracing::warn!("WARNING: the database contains no l2 block number entry and will not be compatible with the ZKSync External Node! To export a compatible snapshot, please let the prepare-snapshot command run until an l2 block number can be found.");
             U64::from(0)
         });
         let mut header = SnapshotHeader {
-            // NOTE: `l1_batch_number` in the snapshot header actually refers
-            // to the ZKsync batch number and not the Ethereum batch height we
-            // store in the snapshot database. In the snapshot database this
-            // field is referred to as `l2_batch_number`.
-            l1_batch_number: l2_batch_number.as_u64(),
+            l1_batch_number: l1_batch_number.as_u64(),
             miniblock_number: l2_block_number.as_u64(),
             ..Default::default()
         };

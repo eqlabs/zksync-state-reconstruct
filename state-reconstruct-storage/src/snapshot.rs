@@ -36,7 +36,7 @@ impl SnapshotDatabase {
                 KEY_TO_INDEX_MAP,
                 snapshot_columns::STORAGE_LOGS,
                 snapshot_columns::FACTORY_DEPS,
-                snapshot_columns::LATEST_L1_BATCH,
+                snapshot_columns::LATEST_L1_BLOCK,
                 snapshot_columns::LATEST_L2_BATCH,
                 snapshot_columns::LATEST_L2_BLOCK,
             ],
@@ -59,7 +59,7 @@ impl SnapshotDatabase {
                 KEY_TO_INDEX_MAP,
                 snapshot_columns::STORAGE_LOGS,
                 snapshot_columns::FACTORY_DEPS,
-                snapshot_columns::LATEST_L1_BATCH,
+                snapshot_columns::LATEST_L1_BLOCK,
                 snapshot_columns::LATEST_L2_BATCH,
                 snapshot_columns::LATEST_L2_BLOCK,
             ],
@@ -156,21 +156,21 @@ impl SnapshotDatabase {
             .map_err(Into::into)
     }
 
-    pub fn get_latest_l1_batch_number(&self) -> Result<Option<U64>> {
-        self.get_metadata_value(snapshot_columns::LATEST_L1_BATCH)
+    pub fn get_latest_l1_block_number(&self) -> Result<Option<U64>> {
+        self.get_metadata_value(snapshot_columns::LATEST_L1_BLOCK)
             .map(|o| o.map(U64::from))
     }
 
-    pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
-        self.set_metadata_value(snapshot_columns::LATEST_L1_BATCH, number)
+    pub fn set_latest_l1_block_number(&self, number: u64) -> Result<()> {
+        self.set_metadata_value(snapshot_columns::LATEST_L1_BLOCK, number)
     }
 
-    pub fn get_latest_l2_batch_number(&self) -> Result<Option<U64>> {
+    pub fn get_latest_l1_batch_number(&self) -> Result<Option<U64>> {
         self.get_metadata_value(snapshot_columns::LATEST_L2_BATCH)
             .map(|o| o.map(U64::from))
     }
 
-    pub fn set_latest_l2_batch_number(&self, number: u64) -> Result<()> {
+    pub fn set_latest_l1_batch_number(&self, number: u64) -> Result<()> {
         self.set_metadata_value(snapshot_columns::LATEST_L2_BATCH, number)
     }
 

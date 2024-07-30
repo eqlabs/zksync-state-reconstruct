@@ -38,8 +38,8 @@ impl TryFrom<u8> for PubdataSource {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct V3 {
     pub pubdata_source: PubdataSource,
-    /// L2 block number.
-    pub block_number: u64,
+    /// ZKSync batch number
+    pub l1_batch_number: u64,
     /// Unix timestamp denoting the start of the block execution.
     pub timestamp: u64,
     /// The serial number of the shortcut index that's used as a unique identifier for storage keys that were used twice or more.
@@ -64,7 +64,7 @@ impl TryFrom<&abi::Token> for V3 {
     /// * `token` - ABI token of `CommitBlockInfo` type on Ethereum.
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
-            new_l2_block_number,
+            l1_batch_number,
             timestamp,
             new_enumeration_index,
             state_root,
@@ -81,7 +81,7 @@ impl TryFrom<&abi::Token> for V3 {
             total_l2_to_l1_pubdata[pointer..total_l2_to_l1_pubdata.len()].to_vec();
         let blk = V3 {
             pubdata_source,
-            block_number: new_l2_block_number.as_u64(),
+            l1_batch_number: l1_batch_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,
             new_state_root: state_root,

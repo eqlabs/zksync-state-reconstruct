@@ -8,7 +8,7 @@ use crate::constants::zksync::{
 };
 
 pub struct ExtractedToken {
-    pub new_l2_block_number: U256,
+    pub l1_batch_number: U256,
     pub timestamp: U256,
     pub new_enumeration_index: U256,
     pub state_root: Vec<u8>,
@@ -30,7 +30,7 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             ));
         };
 
-        let abi::Token::Uint(new_l2_block_number) = block_elems[0].clone() else {
+        let abi::Token::Uint(l1_batch_number) = block_elems[0].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "blockNumber".to_string(),
             ));
@@ -75,7 +75,7 @@ impl TryFrom<&abi::Token> for ExtractedToken {
         };
 
         Ok(Self {
-            new_l2_block_number,
+            l1_batch_number,
             timestamp,
             new_enumeration_index,
             state_root,
