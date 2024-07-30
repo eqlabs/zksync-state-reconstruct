@@ -7,12 +7,12 @@ pub const METRICS_TRACING_TARGET: &str = "metrics";
 pub struct L1Metrics {
     /// The first L1 block fetched.
     pub first_l1_block_num: u64,
-    /// The first L2 batch fetched.
+    /// The first L1 batch fetched.
     pub first_l1_batch_num: u64,
 
     /// The latest L1 block fetched.
     pub latest_l1_block_num: u64,
-    /// The latest L2 block fetched.
+    /// The latest L1 batch fetched.
     pub latest_l1_batch_num: u64,
 
     /// The first L1 block to compare against when measuring progress.

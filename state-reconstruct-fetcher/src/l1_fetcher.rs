@@ -640,7 +640,7 @@ pub async fn parse_calldata(
 
     let abi::Token::Uint(_previous_l1_batch_number) = stored_block_info[0].clone() else {
         return Err(ParseError::InvalidStoredBlockInfo(
-            "cannot parse previous L1 block number".to_string(),
+            "cannot parse previous L1 batch number".to_string(),
         ));
     };
 
