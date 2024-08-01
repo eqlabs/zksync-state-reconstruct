@@ -107,14 +107,14 @@ impl TreeWrapper {
         let root_hash = output.root_hash;
 
         tracing::debug!(
-            "Root hash of block {} = {}",
-            block.l2_block_number,
+            "Root hash of batch {} = {}",
+            block.l1_batch_number,
             hex::encode(root_hash)
         );
 
         let root_hash_bytes = root_hash.as_bytes();
         if root_hash_bytes == block.new_state_root {
-            tracing::debug!("Successfully processed block {}", block.l2_block_number);
+            tracing::debug!("Successfully processed batch {}", block.l1_batch_number);
 
             Ok(root_hash)
         } else {

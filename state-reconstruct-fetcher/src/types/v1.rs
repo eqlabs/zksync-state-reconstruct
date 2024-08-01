@@ -8,8 +8,8 @@ use super::{CommitBlockFormat, CommitBlockInfo, ParseError};
 /// Data needed to commit new block
 #[derive(Debug, Serialize, Deserialize)]
 pub struct V1 {
-    /// L2 block number.
-    pub block_number: u64,
+    /// ZKSync batch number.
+    pub l1_batch_number: u64,
     /// Unix timestamp denoting the start of the block execution.
     pub timestamp: u64,
     /// The serial number of the shortcut index that's used as a unique identifier for storage keys that were used twice or more.
@@ -46,7 +46,7 @@ impl TryFrom<&abi::Token> for V1 {
     /// Try to parse Ethereum ABI token into [`V1`].
     fn try_from(token: &abi::Token) -> Result<Self, Self::Error> {
         let ExtractedToken {
-            new_l2_block_number,
+            l1_batch_number,
             timestamp,
             new_enumeration_index,
             state_root,
@@ -83,7 +83,7 @@ impl TryFrom<&abi::Token> for V1 {
         );
 
         let mut blk = V1 {
-            block_number: new_l2_block_number.as_u64(),
+            l1_batch_number: l1_batch_number.as_u64(),
             timestamp: timestamp.as_u64(),
             index_repeated_storage_changes: new_enumeration_index,
             new_state_root: state_root,
@@ -145,7 +145,7 @@ impl TryFrom<&abi::Token> for V1 {
 }
 
 struct ExtractedToken {
-    new_l2_block_number: U256,
+    l1_batch_number: U256,
     timestamp: U256,
     new_enumeration_index: U256,
     state_root: Vec<u8>,
@@ -168,7 +168,7 @@ impl TryFrom<&abi::Token> for ExtractedToken {
             ));
         };
 
-        let abi::Token::Uint(new_l2_block_number) = block_elems[0].clone() else {
+        let abi::Token::Uint(l1_batch_number) = block_elems[0].clone() else {
             return Err(ParseError::InvalidCommitBlockInfo(
                 "blockNumber".to_string(),
             ));
@@ -247,7 +247,7 @@ impl TryFrom<&abi::Token> for ExtractedToken {
         };
 
         Ok(Self {
-            new_l2_block_number,
+            l1_batch_number,
             timestamp,
             new_enumeration_index,
             state_root,

@@ -68,11 +68,11 @@ pub enum CommitBlockInfo {
 /// Block with all required fields extracted from a [`CommitBlockInfo`].
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommitBlock {
-    /// L1 block number.
+    /// Ethereum block number.
     #[serde(skip)]
     pub l1_block_number: Option<u64>,
-    /// L2 block number.
-    pub l2_block_number: u64,
+    /// ZKSync batch number.
+    pub l1_batch_number: u64,
     /// Next unused key serial number.
     pub index_repeated_storage_changes: u64,
     /// The state root of the full state tree.
@@ -108,7 +108,7 @@ impl CommitBlock {
         match block_type {
             CommitBlockInfo::V1(block) => CommitBlock {
                 l1_block_number: None,
-                l2_block_number: block.block_number,
+                l1_batch_number: block.l1_batch_number,
                 index_repeated_storage_changes: block.index_repeated_storage_changes,
                 new_state_root: block.new_state_root,
                 initial_storage_changes: block
@@ -147,7 +147,7 @@ impl CommitBlock {
 
                 CommitBlock {
                     l1_block_number: None,
-                    l2_block_number: block.block_number,
+                    l1_batch_number: block.l1_batch_number,
                     index_repeated_storage_changes: block.index_repeated_storage_changes,
                     new_state_root: block.new_state_root,
                     initial_storage_changes,
@@ -186,7 +186,7 @@ impl CommitBlock {
 
         Ok(CommitBlock {
             l1_block_number: None,
-            l2_block_number: block.block_number,
+            l1_batch_number: block.l1_batch_number,
             index_repeated_storage_changes: block.index_repeated_storage_changes,
             new_state_root: block.new_state_root,
             initial_storage_changes,

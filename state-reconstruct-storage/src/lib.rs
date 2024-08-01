@@ -1,3 +1,5 @@
+//! For the sake of backwards compatibility the column handles may not actually
+//! be accurately named.
 pub mod bytecode;
 pub mod reconstruction;
 pub mod snapshot;
@@ -14,9 +16,10 @@ pub const METADATA: &str = "metadata";
 pub mod reconstruction_columns {
     pub const LAST_REPEATED_KEY_INDEX: &str = "LAST_REPEATED_KEY_INDEX";
     /// The latest l1 block number that was processed.
-    pub const LATEST_L1_BATCH: &str = "LATEST_L1_BLOCK_NUMBER";
-    /// The latest l2 block number that was processed.
-    pub const LATEST_L2_BATCH: &str = "LATEST_L2_BLOCK_NUMBER";
+    pub const LATEST_L1_BLOCK: &str = "LATEST_L1_BLOCK_NUMBER";
+    /// The latest l1 batch number that was processed. This is the batch number
+    /// of the ZKSync transactions.
+    pub const LATEST_L1_BATCH: &str = "LATEST_L2_BLOCK_NUMBER";
 }
 
 pub mod snapshot_columns {
@@ -24,10 +27,11 @@ pub mod snapshot_columns {
     pub const FACTORY_DEPS: &str = "factory_deps";
 
     pub const LAST_REPEATED_KEY_INDEX: &str = "SNAPSHOT_LAST_REPEATED_KEY_INDEX";
-    /// The latest l1 batch number that was processed.
-    pub const LATEST_L1_BATCH: &str = "SNAPSHOT_LATEST_L1_BATCH";
-    /// The latest l2 batch number that was processed.
-    pub const LATEST_L2_BATCH: &str = "SNAPSHOT_LATEST_L2_BATCH";
+    /// The latest l1 block number that was processed.
+    pub const LATEST_L1_BLOCK: &str = "SNAPSHOT_LATEST_L1_BATCH";
+    /// The latest l1 batch number that was processed. This is the batch number
+    /// of the ZKSync transactions.
+    pub const LATEST_L1_BATCH: &str = "SNAPSHOT_LATEST_L2_BATCH";
     /// The latest l2 block number that was processed.
     pub const LATEST_L2_BLOCK: &str = "SNAPSHOT_LATEST_L2_BLOCK";
 }

@@ -56,7 +56,7 @@ impl SnapshotBuilder {
     // Gets the next L1 batch number to be processed for ues in state recovery.
     pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
         self.database
-            .get_latest_l1_batch_number()
+            .get_latest_l1_block_number()
             .map(|o| o.unwrap_or(U64::from(0)))
     }
 }
@@ -133,10 +133,10 @@ impl Processor for SnapshotBuilder {
 
             let _ = self
                 .database
-                .set_latest_l2_block_number(block.l2_block_number);
+                .set_latest_l1_batch_number(block.l1_batch_number);
 
             if let Some(number) = block.l1_block_number {
-                let _ = self.database.set_latest_l1_batch_number(number);
+                let _ = self.database.set_latest_l1_block_number(number);
             };
         }
     }
@@ -273,7 +273,7 @@ mod tests {
                 let repeated_storage_changes = IndexMap::new();
                 let cb = CommitBlock {
                     l1_block_number: Some(1),
-                    l2_block_number: 2,
+                    l1_batch_number: 2,
                     index_repeated_storage_changes: 0,
                     new_state_root: Vec::new(),
                     initial_storage_changes,
