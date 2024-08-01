@@ -41,7 +41,10 @@ pub mod zksync {
     /// The number of trailing bytes to ignore when using calldata post-blobs. Contains unused blob commitments.
     pub const CALLDATA_SOURCE_TAIL_SIZE: usize = 32;
 
-    /// The storage address where the latest L2 block number is written to.
-    pub const L2_BLOCK_NUMBER_ADDRESS: &str =
-        "5e5a67d1b864c576f39bb2b77c6537744c0f03515abce63b473bb7c56ad07d8e";
+    /// NOTE: There could be more but this covers a good chunk.
+    /// The storage addresses where the latest L2 block number is written to.
+    pub const L2_BLOCK_NUMBER_ADDRESSES: [&str; 2] = [
+        "5e5a67d1b864c576f39bb2b77c6537744c0f03515abce63b473bb7c56ad07d8e",
+        "ecfc4e86b2e01c263feada4f8f53d2dab45c66b0f4d1d7ab0f2f8ec32f207c48",
+    ];
 }

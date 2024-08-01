@@ -10,7 +10,7 @@ use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::{ethereum, storage, zksync::L2_BLOCK_NUMBER_ADDRESS},
+    constants::{ethereum, storage, zksync::L2_BLOCK_NUMBER_ADDRESSES},
     types::CommitBlock,
 };
 use state_reconstruct_storage::{
@@ -97,7 +97,8 @@ impl Processor for SnapshotBuilder {
                     .expect("failed to get key from database");
 
                 // We make sure to track writes to the L2 block number address.
-                if hex::encode(key) == L2_BLOCK_NUMBER_ADDRESS {
+                let hex_key = hex::encode(key);
+                if L2_BLOCK_NUMBER_ADDRESSES.contains(&hex_key.as_ref()) {
                     let (block_number, _timestamp) = unpack_block_info(h256_to_u256(value));
                     self.database
                         .set_latest_l2_block_number(block_number)

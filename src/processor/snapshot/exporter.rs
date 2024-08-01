@@ -40,7 +40,7 @@ impl SnapshotExporter {
             .database
             .get_latest_l1_batch_number()?
             .ok_or_eyre("no latest l1 batch number in snapshot db")?;
-        let l2_block_number = self.database.get_latest_l2_block_number()?.unwrap_or({
+        let l2_block_number = self.database.get_latest_l2_block_number()?.unwrap_or_else(|| {
             tracing::warn!("WARNING: the database contains no l2 block number entry and will not be compatible with the ZKSync External Node! To export a compatible snapshot, please let the prepare-snapshot command run until an l2 block number can be found.");
             U64::from(0)
         });
