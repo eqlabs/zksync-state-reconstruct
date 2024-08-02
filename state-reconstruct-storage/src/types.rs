@@ -169,7 +169,7 @@ impl Proto for SnapshotStorageLog {
     fn from_proto(proto: Self::ProtoStruct) -> Result<Self> {
         let value_bytes: [u8; 32] = proto.storage_value().try_into()?;
         Ok(Self {
-            key: U256::from_big_endian(proto.storage_key()),
+            key: U256::from_big_endian(proto.hashed_key()),
             value: StorageValue::from(&value_bytes),
             l1_batch_number_of_initial_write: proto.l1_batch_number_of_initial_write().into(),
             enumeration_index: proto.enumeration_index(),

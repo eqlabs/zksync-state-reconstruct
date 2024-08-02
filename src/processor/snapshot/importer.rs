@@ -6,7 +6,6 @@ use std::{
 use ethers::types::U64;
 use eyre::Result;
 use regex::{Captures, Regex};
-use state_reconstruct_fetcher::constants::ethereum::GENESIS_BLOCK;
 use state_reconstruct_storage::types::{
     Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
     SnapshotStorageLogsChunkMetadata,
@@ -29,7 +28,8 @@ impl SnapshotImporter {
         Self { directory }
     }
 
-    pub async fn run(self, db_path: &Path) -> Result<()> {
+    /// Run the snapshot importer task. Returns the batch number contained in the header.
+    pub async fn run(self, db_path: &Path) -> Result<U64> {
         let (tx, rx) = mpsc::channel(1);
 
         let header = self.read_header().expect("failed to read header filepath");
@@ -46,14 +46,13 @@ impl SnapshotImporter {
             }
         });
 
-        let l1_batch_number = header.l1_batch_number + GENESIS_BLOCK;
+        let l1_batch_number = U64::from(header.l1_batch_number);
         let mut tree = TreeWrapper::new_snapshot_wrapper(db_path)
             .await
             .expect("can't create tree");
-        tree.restore_from_snapshot(rx, U64::from(l1_batch_number))
-            .await?;
+        tree.restore_from_snapshot(rx, l1_batch_number).await?;
 
-        Ok(())
+        Ok(l1_batch_number)
     }
 
     fn read_header(&self) -> Result<SnapshotHeader> {

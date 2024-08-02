@@ -4,7 +4,7 @@ use ethers::{
     abi::{Contract, Function},
     prelude::*,
 };
-use eyre::Result;
+use eyre::{eyre, OptionExt, Result};
 use rand::random;
 use state_reconstruct_storage::reconstruction::ReconstructionDatabase;
 use thiserror::Error;
@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     blob_http_client::BlobHttpClient,
-    constants::ethereum::{BLOB_BLOCK, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
+    constants::ethereum::{BLOB_BLOCK, BLOCK_STEP, BOOJUM_BLOCK, GENESIS_BLOCK, ZK_SYNC_ADDR},
     metrics::L1Metrics,
     types::{v1::V1, v2::V2, CommitBlock, ParseError},
 };
@@ -124,25 +124,55 @@ impl L1Fetcher {
         })
     }
 
-    pub async fn run(&self, sink: mpsc::Sender<CommitBlock>) -> Result<()> {
+    /// Decide which block to start fetching from based on the following criteria:
+    /// - Has the tool already made progress before?
+    /// - Was a snapshot just imported?
+    /// - Did the user set an explicit start block?
+    ///
+    /// Returns the block number to start fetching from.
+    async fn decide_start_block(&self, snapshot_end_batch: Option<U64>) -> Result<U64> {
         // Start fetching from the `GENESIS_BLOCK` unless the `start_block` argument is supplied,
         // in which case, start from that instead. If no argument was supplied and a state snapshot
         // exists, start from the block number specified in that snapshot.
-        let mut current_l1_block_number = U64::from(self.config.start_block);
+        let mut start_block = U64::from(self.config.start_block);
+
+        // We also have to check if a snapshot was recently imported. If so we
+        // should continue from the last imported batch.
+        if let Some(target_batch_number) = snapshot_end_batch {
+            tracing::info!(
+                "Trying to map snapshots latest L1 batch number, this might take a while..."
+            );
+            match self.map_l1_batch_to_l1_block(U256::from(target_batch_number.as_u64())).await {
+                Ok(block_number) => return Ok(block_number),
+                Err(e) => tracing::error!("Unable to find a corresponding L1 block number for the latest imported L1 batch: {e}"),
+            }
+        }
+
         // User might have supplied their own start block, in that case we shouldn't enforce the
         // use of the snapshot value.
-        if current_l1_block_number == GENESIS_BLOCK.into() {
+        if start_block == GENESIS_BLOCK.into() {
             if let Some(snapshot) = &self.inner_db {
                 let snapshot_latest_l1_block_number =
                     snapshot.lock().await.get_latest_l1_block_number()?;
-                if snapshot_latest_l1_block_number > current_l1_block_number {
-                    current_l1_block_number = snapshot_latest_l1_block_number;
-                    tracing::info!(
-                        "Found snapshot, starting from L1 block {current_l1_block_number}"
-                    );
+                if snapshot_latest_l1_block_number > start_block {
+                    start_block = snapshot_latest_l1_block_number;
                 }
             };
         }
+
+        Ok(start_block)
+    }
+
+    pub async fn run(
+        &self,
+        sink: mpsc::Sender<CommitBlock>,
+        snapshot_end_batch: Option<U64>,
+    ) -> Result<()> {
+        let current_l1_block_number = self.decide_start_block(snapshot_end_batch).await?;
+        tracing::info!(
+            "Starting fetching from block number: {}",
+            current_l1_block_number
+        );
 
         let end_block = self
             .config
@@ -263,7 +293,7 @@ impl L1Fetcher {
 
         let metrics = self.metrics.clone();
         let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
-        let provider_clone = self.provider.clone();
+        let provider = self.provider.clone();
         let block_step = self.config.block_step;
 
         Ok(tokio::spawn({
@@ -279,28 +309,20 @@ impl L1Fetcher {
                     }
 
                     let Some(end_block_number) = end_block else {
-                        if let Ok(new_end) = L1Fetcher::retry_call(
-                            || provider_clone.get_block(BlockNumber::Finalized),
-                            L1FetchError::GetEndBlockNumber,
-                        )
-                        .await
+                        if let Ok(new_end_block_number_candidate) =
+                            L1Fetcher::get_last_l1_block_number(&provider).await
                         {
-                            if let Some(found_block) = new_end {
-                                if let Some(ebn) = found_block.number {
-                                    let end_block_number =
-                                        if let Some(end_block_limit) = max_end_block {
-                                            if end_block_limit < ebn {
-                                                end_block_limit
-                                            } else {
-                                                ebn
-                                            }
-                                        } else {
-                                            ebn
-                                        };
-                                    end_block = Some(end_block_number);
-                                    metrics.lock().await.last_l1_block = end_block_number.as_u64();
+                            let end_block_number = if let Some(end_block_limit) = max_end_block {
+                                if end_block_limit < new_end_block_number_candidate {
+                                    end_block_limit
+                                } else {
+                                    new_end_block_number_candidate
                                 }
-                            }
+                            } else {
+                                new_end_block_number_candidate
+                            };
+                            end_block = Some(end_block_number);
+                            metrics.lock().await.last_l1_block = end_block_number.as_u64();
                         } else {
                             tracing::debug!("Cannot get latest block number...");
                             cancellation_token.cancelled_else_long_timeout().await;
@@ -335,11 +357,9 @@ impl L1Fetcher {
 
                     // Grab all relevant logs.
                     let before = Instant::now();
-                    if let Ok(logs) = L1Fetcher::retry_call(
-                        || provider_clone.get_logs(&filter),
-                        L1FetchError::GetLogs,
-                    )
-                    .await
+                    if let Ok(logs) =
+                        L1Fetcher::retry_call(|| provider.get_logs(&filter), L1FetchError::GetLogs)
+                            .await
                     {
                         let duration = before.elapsed();
                         metrics.lock().await.log_acquisition.add(duration);
@@ -437,13 +457,8 @@ impl L1Fetcher {
                 while let Some(hash) = hash_rx.recv().await {
                     let tx = loop {
                         let before = Instant::now();
-                        match L1Fetcher::retry_call(
-                            || provider.get_transaction(hash),
-                            L1FetchError::GetTx,
-                        )
-                        .await
-                        {
-                            Ok(Some(tx)) => {
+                        match L1Fetcher::get_transaction_by_hash(&provider, hash).await {
+                            Ok(tx) => {
                                 let duration = before.elapsed();
                                 metrics.lock().await.tx_acquisition.add(duration);
                                 break tx;
@@ -582,6 +597,94 @@ impl L1Fetcher {
         }))
     }
 
+    /// Use binary-search to find the Ethereum block on which a particular batch
+    /// was published.
+    pub async fn map_l1_batch_to_l1_block(&self, target_batch_number: U256) -> Result<U64> {
+        let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
+        let provider = self.provider.clone();
+
+        let mut lower_block_number = U64::from(GENESIS_BLOCK);
+        let mut upper_block_number = L1Fetcher::get_last_l1_block_number(&provider).await?;
+
+        let mut current_block_number = (upper_block_number + lower_block_number) / 2;
+        loop {
+            let mut target_is_higher = false;
+            let mut target_is_lower = false;
+
+            let filter = Filter::new()
+                .address(ZK_SYNC_ADDR.parse::<Address>().unwrap())
+                .topic0(event.signature())
+                .from_block(current_block_number)
+                .to_block(current_block_number + BLOCK_STEP);
+
+            if let Ok(logs) =
+                L1Fetcher::retry_call(|| provider.get_logs(&filter), L1FetchError::GetLogs).await
+            {
+                for log in logs {
+                    let l1_batch_number = U256::from_big_endian(log.topics[1].as_fixed_bytes());
+                    let tx_hash = if let Some(hash) = log.transaction_hash {
+                        hash
+                    } else {
+                        continue;
+                    };
+
+                    match l1_batch_number.cmp(&target_batch_number) {
+                        cmp::Ordering::Equal => {
+                            let block_number =
+                                L1Fetcher::get_transaction_by_hash(&provider, tx_hash)
+                                    .await
+                                    .map(|tx| tx.block_number)?;
+                            return block_number
+                                .ok_or_eyre("found transaction, but it has no block number");
+                        }
+                        cmp::Ordering::Less => target_is_higher = true,
+                        cmp::Ordering::Greater => target_is_lower = true,
+                    }
+                }
+            }
+
+            if target_is_higher {
+                lower_block_number = current_block_number;
+                current_block_number = (upper_block_number + lower_block_number) / 2;
+            } else if target_is_lower {
+                upper_block_number = current_block_number;
+                current_block_number = (upper_block_number + lower_block_number) / 2;
+            }
+
+            // Batch number was not found.
+            if upper_block_number.saturating_sub(lower_block_number) <= U64::from(1) {
+                return Err(eyre!(
+                    "provided batch number ({target_batch_number}) does not exist yet!"
+                ));
+            };
+        }
+    }
+
+    /// Get a specified transaction on L1 by its hash.
+    async fn get_transaction_by_hash(provider: &Provider<Http>, hash: H256) -> Result<Transaction> {
+        match L1Fetcher::retry_call(|| provider.get_transaction(hash), L1FetchError::GetTx).await {
+            Ok(Some(tx)) => Ok(tx),
+            Ok(None) => Err(eyre!("unable to find transaction with hash: {}", hash)),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Get the last published L1 block marked as `Finalized`.
+    async fn get_last_l1_block_number(provider: &Provider<Http>) -> Result<U64> {
+        let Some(last_block) = L1Fetcher::retry_call(
+            || provider.get_block(BlockNumber::Finalized),
+            L1FetchError::GetEndBlockNumber,
+        )
+        .await?
+        else {
+            return Err(eyre!("latest finalized block was not found"));
+        };
+
+        last_block
+            .number
+            .ok_or_eyre("found latest finalized block, but it contained no block number")
+    }
+
     async fn retry_call<T, Fut>(callback: impl Fn() -> Fut, err: L1FetchError) -> Result<T>
     where
         Fut: Future<Output = Result<T, ProviderError>>,
@@ -598,7 +701,6 @@ impl L1Fetcher {
         Err(err.into())
     }
 }
-
 pub async fn parse_calldata(
     l1_block_number: u64,
     commit_candidates: &[Function],

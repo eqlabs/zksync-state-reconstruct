@@ -25,7 +25,6 @@ use crate::util::{h256_to_u256, unpack_block_info};
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
-pub const DEFAULT_NUM_CHUNKS: usize = 10;
 
 pub struct SnapshotBuilder {
     database: SnapshotDatabase,
@@ -53,8 +52,8 @@ impl SnapshotBuilder {
         Self { database }
     }
 
-    // Gets the next L1 batch number to be processed for ues in state recovery.
-    pub fn get_latest_l1_batch_number(&self) -> Result<U64> {
+    // Gets the next L1 block number to be processed for ues in state recovery.
+    pub fn get_latest_l1_block_number(&self) -> Result<U64> {
         self.database
             .get_latest_l1_block_number()
             .map(|o| o.unwrap_or(U64::from(0)))
@@ -107,7 +106,7 @@ impl Processor for SnapshotBuilder {
 
                 if self
                     .database
-                    .update_storage_log_value(index as u64, &value.to_fixed_bytes())
+                    .update_storage_log_value(index as u64, value)
                     .is_err()
                 {
                     let max_idx = self
