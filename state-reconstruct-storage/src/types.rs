@@ -4,12 +4,13 @@ use std::{
 };
 
 use bytes::BytesMut;
-use ethers::types::{H256, U256, U64};
+use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use prost::Message;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use state_reconstruct_utils::derive_final_address_for_params;
 
 use super::bytecode;
 
@@ -70,6 +71,27 @@ pub trait Proto {
 
         let proto = Self::ProtoStruct::decode(&decompressed_bytes[..])?;
         Self::from_proto(proto)
+    }
+}
+
+pub trait LegacyProto {
+    type ProtoStruct: Message + Default;
+
+    fn from_legacy_proto(proto: Self::ProtoStruct) -> Result<Self>
+    where
+        Self: Sized;
+
+    /// Decode a slice of gzip-compressed bytes into [`Self`].
+    fn decode_legacy(bytes: &[u8]) -> Result<Self>
+    where
+        Self: Sized,
+    {
+        let mut decoder = GzDecoder::new(bytes);
+        let mut decompressed_bytes = Vec::new();
+        decoder.read_to_end(&mut decompressed_bytes)?;
+
+        let proto = Self::ProtoStruct::decode(&decompressed_bytes[..])?;
+        Self::from_legacy_proto(proto)
     }
 }
 
@@ -140,6 +162,20 @@ impl Proto for SnapshotStorageLogsChunk {
     }
 }
 
+impl LegacyProto for SnapshotStorageLogsChunk {
+    type ProtoStruct = protobuf::SnapshotStorageLogsChunk;
+
+    fn from_legacy_proto(proto: Self::ProtoStruct) -> Result<Self> {
+        Ok(Self {
+            storage_logs: proto
+                .storage_logs
+                .into_iter()
+                .map(SnapshotStorageLog::from_legacy_proto)
+                .collect::<Result<Vec<_>>>()?,
+        })
+    }
+}
+
 // "most recent" for each key together with info when the key was first used
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct SnapshotStorageLog {
@@ -170,6 +206,24 @@ impl Proto for SnapshotStorageLog {
         let value_bytes: [u8; 32] = proto.storage_value().try_into()?;
         Ok(Self {
             key: U256::from_big_endian(proto.hashed_key()),
+            value: StorageValue::from(&value_bytes),
+            l1_batch_number_of_initial_write: proto.l1_batch_number_of_initial_write().into(),
+            enumeration_index: proto.enumeration_index(),
+        })
+    }
+}
+
+impl LegacyProto for SnapshotStorageLog {
+    type ProtoStruct = protobuf::SnapshotStorageLog;
+
+    fn from_legacy_proto(proto: Self::ProtoStruct) -> Result<Self> {
+        let address_bytes: [u8; 20] = proto.account_address().try_into()?;
+        let address = Address::from(address_bytes);
+        let storage_key = StorageKey::from(proto.storage_key());
+        let hashed_key = StorageKey::from(derive_final_address_for_params(&address, &storage_key));
+        let value_bytes: [u8; 32] = proto.storage_value().try_into()?;
+        Ok(Self {
+            key: hashed_key,
             value: StorageValue::from(&value_bytes),
             l1_batch_number_of_initial_write: proto.l1_batch_number_of_initial_write().into(),
             enumeration_index: proto.enumeration_index(),

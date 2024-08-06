@@ -18,6 +18,7 @@ prost = "0.12.4"
 rocksdb = "0.21.0"
 thiserror = "1.0.50"
 zkevm_opcode_defs = { git = "https://github.com/matter-labs/era-zkevm_opcode_defs.git" }
+state-reconstruct-utils = { path = "../state-reconstruct-utils" }
 
 [build-dependencies]
 prost-build = "0.12.4"

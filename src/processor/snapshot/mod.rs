@@ -6,7 +6,6 @@ pub mod exporter;
 pub mod importer;
 
 use async_trait::async_trait;
-use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
@@ -17,10 +16,10 @@ use state_reconstruct_storage::{
     bytecode,
     types::{SnapshotFactoryDependency, SnapshotStorageLog},
 };
+use state_reconstruct_utils::{derive_final_address_for_params, h256_to_u256, unpack_block_info};
 use tokio::sync::mpsc;
 
 use super::Processor;
-use crate::util::{h256_to_u256, unpack_block_info};
 
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
 pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
@@ -233,17 +232,6 @@ fn reconstruct_genesis_state(database: &mut SnapshotDatabase, path: &str) -> Res
     }
 
     Ok(())
-}
-
-fn derive_final_address_for_params(address: &Address, key: &U256) -> [u8; 32] {
-    let mut buffer = [0u8; 64];
-    buffer[12..32].copy_from_slice(&address.0);
-    key.to_big_endian(&mut buffer[32..64]);
-
-    let mut result = [0u8; 32];
-    result.copy_from_slice(Blake2s256::digest(buffer).as_slice());
-
-    result
 }
 
 #[cfg(test)]
