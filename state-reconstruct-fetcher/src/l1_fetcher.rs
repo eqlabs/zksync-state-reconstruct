@@ -94,6 +94,7 @@ pub struct L1Fetcher {
     config: L1FetcherOptions,
     inner_db: Option<Arc<Mutex<ReconstructionDatabase>>>,
     metrics: Arc<Mutex<L1Metrics>>,
+    cancellation_token: FetcherCancellationToken,
 }
 
 impl L1Fetcher {
@@ -114,6 +115,7 @@ impl L1Fetcher {
             config.start_block
         };
         let metrics = Arc::new(Mutex::new(L1Metrics::new(initial_l1_block)));
+        let cancellation_token = FetcherCancellationToken::new();
 
         Ok(L1Fetcher {
             provider,
@@ -121,6 +123,7 @@ impl L1Fetcher {
             config,
             inner_db,
             metrics,
+            cancellation_token,
         })
     }
 
@@ -168,6 +171,9 @@ impl L1Fetcher {
         sink: mpsc::Sender<CommitBlock>,
         snapshot_end_batch: Option<U64>,
     ) -> Result<()> {
+        // Wait for shutdown signal in background.
+        self.spawn_sigint_handler();
+
         let current_l1_block_number = self.decide_start_block(snapshot_end_batch).await?;
         tracing::info!(
             "Starting fetching from block number: {}",
@@ -200,22 +206,6 @@ impl L1Fetcher {
             }
         });
 
-        // Wait for shutdown signal in background.
-        let token = FetcherCancellationToken::new();
-        let cloned_token = token.clone();
-        tokio::spawn(async move {
-            match tokio::signal::ctrl_c().await {
-                Ok(()) => {
-                    tracing::info!("Shutdown signal received, finishing up and shutting down...");
-                }
-                Err(err) => {
-                    tracing::error!("Shutdown signal failed: {err}");
-                }
-            };
-
-            cloned_token.cancel();
-        });
-
         let (hash_tx, hash_rx) = mpsc::channel(5);
         let (calldata_tx, calldata_rx) = mpsc::channel(5);
 
@@ -232,13 +222,14 @@ impl L1Fetcher {
         let tx_handle = self.spawn_tx_handler(
             hash_rx,
             calldata_tx,
-            token.clone(),
+            self.cancellation_token.clone(),
             current_l1_block_number.as_u64(),
         );
-        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink, token.clone())?;
+        let parse_handle =
+            self.spawn_parsing_handler(calldata_rx, sink, self.cancellation_token.clone())?;
         let main_handle = self.spawn_main_handler(
             hash_tx,
-            token,
+            self.cancellation_token.clone(),
             current_l1_block_number,
             end_block,
             disable_polling,
@@ -597,6 +588,23 @@ impl L1Fetcher {
         }))
     }
 
+    /// Spawn the handler that will wait for shutdown signal in background.
+    fn spawn_sigint_handler(&self) {
+        let cloned_token = self.cancellation_token.clone();
+        tokio::spawn(async move {
+            match tokio::signal::ctrl_c().await {
+                Ok(()) => {
+                    tracing::info!("Shutdown signal received, finishing up and shutting down...");
+                }
+                Err(err) => {
+                    tracing::error!("Shutdown signal failed: {err}");
+                }
+            };
+
+            cloned_token.cancel();
+        });
+    }
+
     /// Use binary-search to find the Ethereum block on which a particular batch
     /// was published.
     pub async fn map_l1_batch_to_l1_block(&self, target_batch_number: U256) -> Result<U64> {
@@ -607,7 +615,7 @@ impl L1Fetcher {
         let mut upper_block_number = L1Fetcher::get_last_l1_block_number(&provider).await?;
 
         let mut current_block_number = (upper_block_number + lower_block_number) / 2;
-        loop {
+        while !self.cancellation_token.is_cancelled() {
             let mut target_is_higher = false;
             let mut target_is_lower = false;
 
@@ -641,6 +649,8 @@ impl L1Fetcher {
                         cmp::Ordering::Greater => target_is_lower = true,
                     }
                 }
+            } else if self.cancellation_token.is_cancelled() {
+                break;
             }
 
             if target_is_higher {
@@ -658,6 +668,8 @@ impl L1Fetcher {
                 ));
             };
         }
+
+        Err(eyre!("l1 batch to block task was cancelled"))
     }
 
     /// Get a specified transaction on L1 by its hash.
