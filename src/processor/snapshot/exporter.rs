@@ -112,7 +112,6 @@ impl SnapshotExporter {
             .iterator_cf(index_to_key_map, rocksdb::IteratorMode::Start);
 
         let num_chunks = num_logs.div_ceil(SNAPSHOT_CHUNK_SIZE as u64);
-        println!("{num_chunks}");
         for chunk_id in 0..num_chunks {
             tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, num_chunks);
 
