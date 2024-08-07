@@ -62,7 +62,7 @@ impl L1Metrics {
         };
 
         tracing::info!(
-            "PROGRESS: [{}] CUR L1 BLOCK: {} L2 BATCH: {} TOTAL PROCESSED L1 BLOCKS: {} L2 BATCHES: {}",
+            "PROGRESS: [{}] CUR L1 BLOCK: {} L1 BATCH: {} TOTAL PROCESSED L1 BLOCKS: {} L1 BATCHES: {}",
             progress,
             self.latest_l1_block_num,
             self.latest_l1_batch_num,

@@ -74,7 +74,7 @@ impl SnapshotDatabase {
             PackingType::NoCompression(v) | PackingType::Transform(v) => v,
             PackingType::Add(_) | PackingType::Sub(_) => {
                 let existing_value = if let Some(log) = self.get_storage_log(&key)? {
-                    U256::from(log.value.to_fixed_bytes())
+                    U256::from_big_endian(log.value.as_bytes())
                 } else {
                     U256::from(0)
                 };
@@ -134,7 +134,7 @@ impl SnapshotDatabase {
         }
     }
 
-    pub fn update_storage_log_value(&self, key_idx: u64, value: &[u8]) -> Result<()> {
+    pub fn update_storage_log_value(&self, key_idx: u64, value: H256) -> Result<()> {
         // Unwrapping column family handle here is safe because presence of
         // those CFs is ensured in construction of this DB.
         let storage_logs = self.cf_handle(snapshot_columns::STORAGE_LOGS).unwrap();
@@ -143,7 +143,7 @@ impl SnapshotDatabase {
         // XXX: These should really be inside a transaction...
         let entry_bs = self.get_cf(storage_logs, &key)?.unwrap();
         let mut entry: SnapshotStorageLog = bincode::deserialize(&entry_bs)?;
-        entry.value = H256::from(<&[u8; 32]>::try_from(value).unwrap());
+        entry.value = value;
         self.put_cf(storage_logs, key, bincode::serialize(&entry)?)
             .map_err(Into::into)
     }

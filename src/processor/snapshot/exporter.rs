@@ -16,6 +16,9 @@ use crate::processor::snapshot::{
     DEFAULT_DB_PATH, SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX, SNAPSHOT_HEADER_FILE_NAME,
 };
 
+/// Number of storage logs included in each chunk.
+const SNAPSHOT_CHUNK_SIZE: usize = 1_000_000;
+
 pub struct SnapshotExporter {
     basedir: PathBuf,
     database: SnapshotDatabase,
@@ -35,7 +38,7 @@ impl SnapshotExporter {
         })
     }
 
-    pub fn export_snapshot(&self, num_chunks: usize) -> Result<()> {
+    pub fn export_snapshot(&self) -> Result<()> {
         let l1_batch_number = self
             .database
             .get_latest_l1_batch_number()?
@@ -50,7 +53,7 @@ impl SnapshotExporter {
             ..Default::default()
         };
 
-        self.export_storage_logs(num_chunks, &mut header)?;
+        self.export_storage_logs(&mut header)?;
         self.export_factory_deps(&mut header)?;
 
         let path = self.basedir.join(SNAPSHOT_HEADER_FILE_NAME);
@@ -97,7 +100,7 @@ impl SnapshotExporter {
         Ok(())
     }
 
-    fn export_storage_logs(&self, num_chunks: usize, header: &mut SnapshotHeader) -> Result<()> {
+    fn export_storage_logs(&self, header: &mut SnapshotHeader) -> Result<()> {
         tracing::info!("Exporting storage logs...");
 
         let num_logs = self.database.get_last_repeated_key_index()?;
@@ -108,17 +111,17 @@ impl SnapshotExporter {
             .database
             .iterator_cf(index_to_key_map, rocksdb::IteratorMode::Start);
 
-        let chunk_size = num_logs / num_chunks as u64;
+        let num_chunks = num_logs.div_ceil(SNAPSHOT_CHUNK_SIZE as u64);
         for chunk_id in 0..num_chunks {
             tracing::info!("Serializing chunk {}/{}...", chunk_id + 1, num_chunks);
 
             let mut chunk = SnapshotStorageLogsChunk::default();
-            for _ in 0..chunk_size {
+            for _ in 0..SNAPSHOT_CHUNK_SIZE {
                 if let Some(Ok((_, key))) = iterator.next() {
                     let key = U256::from_big_endian(&key);
                     if let Ok(Some(entry)) = self.database.get_storage_log(&key) {
                         chunk.storage_logs.push(entry);
-                    }
+                    };
                 } else {
                     break;
                 }
@@ -131,7 +134,7 @@ impl SnapshotExporter {
             header
                 .storage_logs_chunks
                 .push(SnapshotStorageLogsChunkMetadata {
-                    chunk_id: chunk_id as u64,
+                    chunk_id,
                     filepath: path
                         .clone()
                         .into_os_string()

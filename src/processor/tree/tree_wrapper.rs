@@ -168,18 +168,21 @@ impl TreeWrapper {
             total_tree_entries += tree_entries.len();
             self.tree.extend(tree_entries);
 
-            tracing::info!("Chunk {} was succesfully imported!", i + 1);
+            tracing::info!("Chunk {} was successfully imported!", i + 1);
             i += 1;
         }
 
         tracing::info!(
-            "Succesfully imported snapshot containing {total_tree_entries} storage logs!",
+            "Successfully imported snapshot containing {total_tree_entries} storage logs!",
         );
+
+        let root_hash = hex::encode(self.tree.latest_root_hash());
+        tracing::debug!("Current root hash is: {}", root_hash);
 
         self.inner_db
             .lock()
             .await
-            .set_latest_l1_batch_number(l1_batch_number.as_u64() + 1)?;
+            .set_latest_l1_batch_number(l1_batch_number.as_u64())?;
 
         Ok(())
     }
