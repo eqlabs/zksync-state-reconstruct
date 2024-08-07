@@ -219,21 +219,11 @@ impl L1Fetcher {
         // - BlockCommit event filter (main).
         // - Referred L1 block fetch (tx).
         // - Calldata parsing (parse).
-        let tx_handle = self.spawn_tx_handler(
-            hash_rx,
-            calldata_tx,
-            self.cancellation_token.clone(),
-            current_l1_block_number.as_u64(),
-        );
-        let parse_handle =
-            self.spawn_parsing_handler(calldata_rx, sink, self.cancellation_token.clone())?;
-        let main_handle = self.spawn_main_handler(
-            hash_tx,
-            self.cancellation_token.clone(),
-            current_l1_block_number,
-            end_block,
-            disable_polling,
-        )?;
+        let tx_handle =
+            self.spawn_tx_handler(hash_rx, calldata_tx, current_l1_block_number.as_u64());
+        let parse_handle = self.spawn_parsing_handler(calldata_rx, sink)?;
+        let main_handle =
+            self.spawn_main_handler(hash_tx, current_l1_block_number, end_block, disable_polling)?;
 
         tx_handle.await?;
         let last_processed_l1_block_num = parse_handle.await?;
@@ -273,7 +263,6 @@ impl L1Fetcher {
     fn spawn_main_handler(
         &self,
         hash_tx: mpsc::Sender<H256>,
-        cancellation_token: FetcherCancellationToken,
         mut current_l1_block_number: U64,
         max_end_block: Option<U64>,
         disable_polling: bool,
@@ -286,6 +275,7 @@ impl L1Fetcher {
         let event = self.contracts.v1.events_by_name("BlockCommit")?[0].clone();
         let provider = self.provider.clone();
         let block_step = self.config.block_step;
+        let cancellation_token = self.cancellation_token.clone();
 
         Ok(tokio::spawn({
             async move {
@@ -437,11 +427,11 @@ impl L1Fetcher {
         &self,
         mut hash_rx: mpsc::Receiver<H256>,
         l1_tx_tx: mpsc::Sender<Transaction>,
-        cancellation_token: FetcherCancellationToken,
         mut last_block: u64,
     ) -> tokio::task::JoinHandle<()> {
         let metrics = self.metrics.clone();
         let provider = self.provider.clone();
+        let cancellation_token = self.cancellation_token.clone();
 
         tokio::spawn({
             async move {
@@ -499,11 +489,12 @@ impl L1Fetcher {
         &self,
         mut l1_tx_rx: mpsc::Receiver<Transaction>,
         sink: mpsc::Sender<CommitBlock>,
-        cancellation_token: FetcherCancellationToken,
     ) -> Result<tokio::task::JoinHandle<Option<u64>>> {
         let metrics = self.metrics.clone();
         let contracts = self.contracts.clone();
         let client = BlobHttpClient::new(self.config.blobs_url.clone())?;
+        let cancellation_token = self.cancellation_token.clone();
+
         Ok(tokio::spawn({
             async move {
                 let mut boojum_mode = false;
