@@ -3,7 +3,6 @@
 
 mod cli;
 mod processor;
-mod util;
 
 use std::{
     env,
@@ -23,17 +22,15 @@ use state_reconstruct_fetcher::{
     l1_fetcher::{L1Fetcher, L1FetcherOptions},
     types::CommitBlock,
 };
+use state_reconstruct_utils::json;
 use tikv_jemallocator::Jemalloc;
 use tokio::sync::mpsc;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
-use crate::{
-    processor::{
-        json::JsonSerializationProcessor,
-        tree::{query_tree::QueryTree, TreeProcessor},
-        Processor,
-    },
-    util::json,
+use crate::processor::{
+    json::JsonSerializationProcessor,
+    tree::{query_tree::QueryTree, TreeProcessor},
+    Processor,
 };
 
 #[global_allocator]

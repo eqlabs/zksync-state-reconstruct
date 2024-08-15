@@ -1,6 +1,5 @@
 use std::{collections::HashMap, fs, num::NonZeroU32, path::Path, str::FromStr, sync::Arc};
 
-use blake2::{Blake2s256, Digest};
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
@@ -10,6 +9,7 @@ use state_reconstruct_fetcher::{
 use state_reconstruct_storage::{
     reconstruction::ReconstructionDatabase, types::SnapshotStorageLogsChunk, PackingType,
 };
+use state_reconstruct_utils::derive_final_address_for_params;
 use thiserror::Error;
 use tokio::sync::{
     mpsc::{self, Receiver},
@@ -325,15 +325,4 @@ fn reconstruct_genesis_state<D: Database>(
     tracing::trace!("Initial state root = {}", hex::encode(output.root_hash));
 
     Ok(())
-}
-
-fn derive_final_address_for_params(address: &Address, key: &U256) -> [u8; 32] {
-    let mut buffer = [0u8; 64];
-    buffer[12..32].copy_from_slice(&address.0);
-    key.to_big_endian(&mut buffer[32..64]);
-
-    let mut result = [0u8; 32];
-    result.copy_from_slice(Blake2s256::digest(buffer).as_slice());
-
-    result
 }

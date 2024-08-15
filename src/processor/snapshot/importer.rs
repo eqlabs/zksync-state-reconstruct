@@ -7,8 +7,9 @@ use ethers::types::U64;
 use eyre::Result;
 use regex::{Captures, Regex};
 use state_reconstruct_storage::types::{
-    Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
+    LegacyProto, Proto, SnapshotFactoryDependencies, SnapshotHeader, SnapshotStorageLogsChunk,
     SnapshotStorageLogsChunkMetadata,
+    SnapshotVersion::{Version0, Version1},
 };
 use tokio::sync::mpsc::{self, Sender};
 
@@ -87,7 +88,11 @@ impl SnapshotImporter {
         let total_chunks = filepaths.len();
         for (i, path) in filepaths.into_iter().enumerate() {
             let bytes = fs::read(path)?;
-            let storage_logs_chunk = SnapshotStorageLogsChunk::decode(&bytes)?;
+
+            let storage_logs_chunk = match header.version {
+                Version0 => SnapshotStorageLogsChunk::decode_legacy(&bytes)?,
+                Version1 => SnapshotStorageLogsChunk::decode(&bytes)?,
+            };
             tracing::info!("Read chunk {}/{}, processing...", i + 1, total_chunks);
             tx.send(storage_logs_chunk).await?;
         }
