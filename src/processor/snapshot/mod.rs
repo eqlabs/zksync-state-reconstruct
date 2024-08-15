@@ -22,7 +22,7 @@ use tokio::sync::mpsc;
 use super::Processor;
 
 pub const DEFAULT_DB_PATH: &str = "snapshot_db";
-pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot-header.json";
+pub const SNAPSHOT_HEADER_FILE_NAME: &str = "snapshot_header.json";
 pub const SNAPSHOT_FACTORY_DEPS_FILE_NAME_SUFFIX: &str = "factory_deps.proto.gzip";
 
 pub struct SnapshotBuilder {
