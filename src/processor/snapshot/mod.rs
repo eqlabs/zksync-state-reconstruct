@@ -74,9 +74,7 @@ impl Processor for SnapshotBuilder {
                     .insert_storage_log(&mut SnapshotStorageLog {
                         key: *key,
                         value,
-                        l1_batch_number_of_initial_write: U64::from(
-                            block.l1_block_number.unwrap_or(0),
-                        ),
+                        l1_batch_number_of_initial_write: U64::from(block.l1_batch_number),
                         enumeration_index: 0,
                     })
                     .expect("failed to insert storage_log_entry");
@@ -226,7 +224,7 @@ fn reconstruct_genesis_state(database: &mut SnapshotDatabase, path: &str) -> Res
         database.insert_storage_log(&mut SnapshotStorageLog {
             key,
             value,
-            l1_batch_number_of_initial_write: U64::from(ethereum::GENESIS_BLOCK),
+            l1_batch_number_of_initial_write: U64::from(0),
             enumeration_index: 0,
         })?;
     }
