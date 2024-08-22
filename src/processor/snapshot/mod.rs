@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use ethers::types::{Address, H256, U256, U64};
 use eyre::Result;
 use state_reconstruct_fetcher::{
-    constants::{ethereum, storage, zksync::L2_BLOCK_NUMBER_ADDRESSES},
+    constants::{storage, zksync::L2_BLOCK_NUMBER_ADDRESSES},
     types::CommitBlock,
 };
 use state_reconstruct_storage::{
