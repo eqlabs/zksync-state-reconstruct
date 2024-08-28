@@ -11,6 +11,9 @@ members = [
     "state-reconstruct-utils",
 ]
 
+[profile.release]
+panic = 'abort'
+
 [dependencies]
 async-trait = "0.1.74"
 bincode = "1"
